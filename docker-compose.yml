@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stratbench-db
+    environment:
+      POSTGRES_USER: stratbench
+      POSTGRES_PASSWORD: stratbench
+      POSTGRES_DB: stratbench
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stratbench"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    container_name: stratbench-api
+    environment:
+      DATABASE_URL: postgres://stratbench:stratbench@postgres:5432/stratbench
+      HOST: 0.0.0.0
+      PORT: 8080
+      WORKERS: 4
+      DB_MAX_CONNECTIONS: 20
+      MAX_CONCURRENT_RUNS: 4
+      RUST_LOG: info,stratbench=debug
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: stratbench-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:

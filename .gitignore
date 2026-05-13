@@ -1,0 +1,16 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Environment files
+.env
+.env.*
+
+# Node.js dependencies (frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/.parcel-cache/
+
+# Logs
+*.log
