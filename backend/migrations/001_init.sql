@@ -10,8 +10,10 @@ CREATE TABLE strategies (
     status          VARCHAR(50) NOT NULL DEFAULT 'idle',
     description     TEXT NOT NULL DEFAULT '',
     parameters      JSONB NOT NULL DEFAULT '{}',
+    code_key        TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT strategies_code_key_unique UNIQUE (code_key)
 );
 
 CREATE INDEX idx_strategies_type ON strategies(strategy_type);
@@ -101,3 +103,18 @@ CREATE TABLE equity_snapshots (
 
 CREATE INDEX idx_equity_run ON equity_snapshots(benchmark_run_id);
 CREATE INDEX idx_equity_timestamp ON equity_snapshots(benchmark_run_id, timestamp ASC);
+
+CREATE TABLE market_bars (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    symbol      VARCHAR(20)     NOT NULL,
+    timeframe   VARCHAR(10)     NOT NULL,
+    ts          TIMESTAMPTZ     NOT NULL,
+    open        NUMERIC(18, 6)  NOT NULL,
+    high        NUMERIC(18, 6)  NOT NULL,
+    low         NUMERIC(18, 6)  NOT NULL,
+    close       NUMERIC(18, 6)  NOT NULL,
+    volume      NUMERIC(24, 8)  NOT NULL,
+    CONSTRAINT uq_market_bars UNIQUE (symbol, timeframe, ts)
+);
+
+CREATE INDEX idx_market_bars_lookup ON market_bars (symbol, timeframe, ts DESC);
