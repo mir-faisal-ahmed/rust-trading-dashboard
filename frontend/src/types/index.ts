@@ -36,7 +36,7 @@ export interface BenchmarkRun {
   end_date: string;
   status: StrategyStatus;
   duration_ms: number;
-  metrics: PerformanceMetrics;
+  metrics: PerformanceMetrics | null;
   equity_curve: EquityPoint[];
   drawdown_curve: DrawdownPoint[];
   trades: Trade[];

@@ -8,23 +8,23 @@ interface StrategyTableProps {
 }
 
 const columns = [
-  { key: "strategy_name", label: "STRATEGY", width: "w-44" },
-  { key: "status", label: "STATUS", width: "w-20" },
-  { key: "metrics.total_return_pct", label: "TOTAL RET%", width: "w-24" },
-  { key: "metrics.annualized_return_pct", label: "ANN RET%", width: "w-22" },
-  { key: "metrics.sharpe_ratio", label: "SHARPE", width: "w-18" },
-  { key: "metrics.sortino_ratio", label: "SORTINO", width: "w-18" },
-  { key: "metrics.max_drawdown_pct", label: "MAX DD%", width: "w-20" },
-  { key: "metrics.win_rate_pct", label: "WIN%", width: "w-16" },
-  { key: "metrics.profit_factor", label: "PF", width: "w-14" },
-  { key: "metrics.total_trades", label: "TRADES", width: "w-18" },
-  { key: "metrics.volatility_ann_pct", label: "VOL%", width: "w-16" },
-  { key: "duration_ms", label: "TIME(ms)", width: "w-20" },
+  { key: "strategy_name",                label: "STRATEGY" },
+  { key: "status",                       label: "STATUS" },
+  { key: "metrics.total_return_pct",     label: "TOTAL RET%" },
+  { key: "metrics.annualized_return_pct",label: "ANN RET%" },
+  { key: "metrics.sharpe_ratio",         label: "SHARPE" },
+  { key: "metrics.sortino_ratio",        label: "SORTINO" },
+  { key: "metrics.max_drawdown_pct",     label: "MAX DD%" },
+  { key: "metrics.win_rate_pct",         label: "WIN%" },
+  { key: "metrics.profit_factor",        label: "PF" },
+  { key: "metrics.total_trades",         label: "TRADES" },
+  { key: "metrics.volatility_ann_pct",   label: "VOL%" },
+  { key: "duration_ms",                  label: "TIME(ms)" },
 ];
 
-function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-  return path.split(".").reduce((acc: unknown, key: string) => {
-    if (acc && typeof acc === "object" && key in (acc as Record<string, unknown>)) {
+function nestedGet(obj: unknown, path: string): unknown {
+  return path.split(".").reduce((acc: unknown, key) => {
+    if (acc !== null && typeof acc === "object") {
       return (acc as Record<string, unknown>)[key];
     }
     return undefined;
@@ -37,13 +37,13 @@ function pnlColor(val: number): string {
   return "text-neutral-400";
 }
 
-function statusIndicator(status: string): string {
+function statusColor(status: string): string {
   switch (status) {
     case "completed": return "text-green-400";
-    case "running": return "text-blue-400";
-    case "failed": return "text-red-400";
-    case "queued": return "text-yellow-500";
-    default: return "text-neutral-500";
+    case "running":   return "text-blue-400";
+    case "failed":    return "text-red-400";
+    case "queued":    return "text-yellow-500";
+    default:          return "text-neutral-500";
   }
 }
 
@@ -51,14 +51,14 @@ export function StrategyTable({ runs, onSelect, selectedId }: StrategyTableProps
   const [sort, setSort] = useState<SortConfig>({ key: "metrics.sharpe_ratio", direction: "desc" });
 
   const sorted = [...runs].sort((a, b) => {
-    const aVal = getNestedValue(a as unknown as Record<string, unknown>, sort.key);
-    const bVal = getNestedValue(b as unknown as Record<string, unknown>, sort.key);
-    if (typeof aVal === "number" && typeof bVal === "number") {
-      return sort.direction === "asc" ? aVal - bVal : bVal - aVal;
+    const av = nestedGet(a, sort.key);
+    const bv = nestedGet(b, sort.key);
+    if (typeof av === "number" && typeof bv === "number") {
+      return sort.direction === "asc" ? av - bv : bv - av;
     }
-    const aStr = String(aVal || "");
-    const bStr = String(bVal || "");
-    return sort.direction === "asc" ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+    return sort.direction === "asc"
+      ? String(av ?? "").localeCompare(String(bv ?? ""))
+      : String(bv ?? "").localeCompare(String(av ?? ""));
   });
 
   function handleSort(key: string) {
@@ -66,6 +66,10 @@ export function StrategyTable({ runs, onSelect, selectedId }: StrategyTableProps
       key,
       direction: prev.key === key && prev.direction === "desc" ? "asc" : "desc",
     }));
+  }
+
+  function fmt(val: number | null | undefined, suffix = ""): string {
+    return val != null ? `${val}${suffix}` : "—";
   }
 
   return (
@@ -81,8 +85,8 @@ export function StrategyTable({ runs, onSelect, selectedId }: StrategyTableProps
               <th
                 key={col.key}
                 onClick={() => handleSort(col.key)}
-                className={`px-2 py-1.5 text-left text-neutral-500 font-normal cursor-pointer hover:text-neutral-200 select-none ${
-                  sort.key === col.key ? "text-amber-500" : ""
+                className={`px-2 py-1.5 text-left font-normal cursor-pointer hover:text-neutral-200 select-none ${
+                  sort.key === col.key ? "text-amber-500" : "text-neutral-500"
                 }`}
               >
                 {col.label}
@@ -94,38 +98,46 @@ export function StrategyTable({ runs, onSelect, selectedId }: StrategyTableProps
           </tr>
         </thead>
         <tbody>
-          {sorted.map((run) => (
-            <tr
-              key={run.id}
-              onClick={() => onSelect(run)}
-              className={`border-b border-neutral-800 cursor-pointer transition-colors ${
-                selectedId === run.id
-                  ? "bg-neutral-800"
-                  : "hover:bg-neutral-900"
-              }`}
-            >
-              <td className="px-2 py-1.5 text-neutral-200 font-medium">{run.strategy_name}</td>
-              <td className={`px-2 py-1.5 ${statusIndicator(run.status)}`}>{run.status}</td>
-              <td className={`px-2 py-1.5 ${pnlColor(run.metrics.total_return_pct)}`}>
-                {run.metrics.total_return_pct > 0 ? "+" : ""}{run.metrics.total_return_pct}
+          {sorted.map((run) => {
+            const m = run.metrics;
+            return (
+              <tr
+                key={run.id}
+                onClick={() => onSelect(run)}
+                className={`border-b border-neutral-800 cursor-pointer transition-colors ${
+                  selectedId === run.id ? "bg-neutral-800" : "hover:bg-neutral-900"
+                }`}
+              >
+                <td className="px-2 py-1.5 text-neutral-200 font-medium">{run.strategy_name}</td>
+                <td className={`px-2 py-1.5 ${statusColor(run.status)}`}>{run.status}</td>
+                <td className={`px-2 py-1.5 ${pnlColor(m?.total_return_pct ?? 0)}`}>
+                  {m ? `${m.total_return_pct > 0 ? "+" : ""}${m.total_return_pct}` : "—"}
+                </td>
+                <td className={`px-2 py-1.5 ${pnlColor(m?.annualized_return_pct ?? 0)}`}>
+                  {m ? `${m.annualized_return_pct > 0 ? "+" : ""}${m.annualized_return_pct}` : "—"}
+                </td>
+                <td className={`px-2 py-1.5 ${(m?.sharpe_ratio ?? 0) > 1 ? "text-green-400" : (m?.sharpe_ratio ?? 0) < 0 ? "text-red-400" : "text-neutral-300"}`}>
+                  {fmt(m?.sharpe_ratio)}
+                </td>
+                <td className="px-2 py-1.5 text-neutral-300">{fmt(m?.sortino_ratio)}</td>
+                <td className="px-2 py-1.5 text-red-400">{fmt(m?.max_drawdown_pct)}</td>
+                <td className={`px-2 py-1.5 ${(m?.win_rate_pct ?? 0) > 50 ? "text-green-400" : "text-neutral-300"}`}>
+                  {fmt(m?.win_rate_pct, "%")}
+                </td>
+                <td className="px-2 py-1.5 text-neutral-300">{fmt(m?.profit_factor)}</td>
+                <td className="px-2 py-1.5 text-neutral-400">{fmt(m?.total_trades)}</td>
+                <td className="px-2 py-1.5 text-neutral-400">{fmt(m?.volatility_ann_pct, "%")}</td>
+                <td className="px-2 py-1.5 text-neutral-500">{run.duration_ms ?? "—"}</td>
+              </tr>
+            );
+          })}
+          {runs.length === 0 && (
+            <tr>
+              <td colSpan={columns.length} className="px-2 py-6 text-center text-neutral-600">
+                no benchmark runs yet
               </td>
-              <td className={`px-2 py-1.5 ${pnlColor(run.metrics.annualized_return_pct)}`}>
-                {run.metrics.annualized_return_pct > 0 ? "+" : ""}{run.metrics.annualized_return_pct}
-              </td>
-              <td className={`px-2 py-1.5 ${run.metrics.sharpe_ratio > 1 ? "text-green-400" : run.metrics.sharpe_ratio < 0 ? "text-red-400" : "text-neutral-300"}`}>
-                {run.metrics.sharpe_ratio}
-              </td>
-              <td className="px-2 py-1.5 text-neutral-300">{run.metrics.sortino_ratio}</td>
-              <td className="px-2 py-1.5 text-red-400">{run.metrics.max_drawdown_pct}</td>
-              <td className={`px-2 py-1.5 ${run.metrics.win_rate_pct > 50 ? "text-green-400" : "text-neutral-300"}`}>
-                {run.metrics.win_rate_pct}
-              </td>
-              <td className="px-2 py-1.5 text-neutral-300">{run.metrics.profit_factor}</td>
-              <td className="px-2 py-1.5 text-neutral-400">{run.metrics.total_trades}</td>
-              <td className="px-2 py-1.5 text-neutral-400">{run.metrics.volatility_ann_pct}</td>
-              <td className="px-2 py-1.5 text-neutral-500">{run.duration_ms}</td>
             </tr>
-          ))}
+          )}
         </tbody>
       </table>
     </div>

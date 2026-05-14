@@ -17,6 +17,18 @@ pub async fn list(pool: web::Data<PgPool>) -> HttpResponse {
     }
 }
 
+pub async fn list_full(pool: web::Data<PgPool>) -> HttpResponse {
+    match queries::list_full_benchmark_runs(pool.get_ref()).await {
+        Ok(runs) => HttpResponse::Ok().json(runs),
+        Err(e) => {
+            tracing::error!("failed to list full benchmark runs: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "failed to fetch benchmark runs"
+            }))
+        }
+    }
+}
+
 pub async fn get(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> HttpResponse {
     let id = path.into_inner();
     match queries::get_benchmark_run(pool.get_ref(), id).await {
@@ -33,6 +45,22 @@ pub async fn get(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> HttpResponse
     }
 }
 
+pub async fn get_full(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> HttpResponse {
+    let id = path.into_inner();
+    match queries::get_full_benchmark_run(pool.get_ref(), id).await {
+        Ok(Some(run)) => HttpResponse::Ok().json(run),
+        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "benchmark run not found"
+        })),
+        Err(e) => {
+            tracing::error!("failed to get full benchmark run {}: {}", id, e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "failed to fetch benchmark run"
+            }))
+        }
+    }
+}
+
 pub async fn create(
     pool: web::Data<PgPool>,
     engine: web::Data<EngineState>,
@@ -40,7 +68,6 @@ pub async fn create(
 ) -> HttpResponse {
     let input = body.into_inner();
 
-    // verify strategy exists
     match queries::get_strategy(pool.get_ref(), input.strategy_id).await {
         Ok(None) => {
             return HttpResponse::NotFound().json(serde_json::json!({
@@ -58,7 +85,6 @@ pub async fn create(
 
     match queries::create_benchmark_run(pool.get_ref(), &input).await {
         Ok(run) => {
-            // queue the run for execution
             engine.queue_run(run.id);
             HttpResponse::Created().json(run)
         }

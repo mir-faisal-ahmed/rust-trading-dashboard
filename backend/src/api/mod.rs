@@ -1,5 +1,6 @@
-pub mod strategies;
 pub mod benchmarks;
+pub mod market_data;
+pub mod strategies;
 pub mod trades;
 
 use actix_web::web;
@@ -26,9 +27,18 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                     .route(web::get().to(benchmarks::list))
                     .route(web::post().to(benchmarks::create)),
             )
+            // /benchmarks/full must be registered before /benchmarks/{id}
+            .service(
+                web::resource("/benchmarks/full")
+                    .route(web::get().to(benchmarks::list_full)),
+            )
             .service(
                 web::resource("/benchmarks/{id}")
                     .route(web::get().to(benchmarks::get)),
+            )
+            .service(
+                web::resource("/benchmarks/{id}/full")
+                    .route(web::get().to(benchmarks::get_full)),
             )
             .service(
                 web::resource("/benchmarks/{id}/metrics")
@@ -41,6 +51,18 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .service(
                 web::resource("/benchmarks/{id}/trades")
                     .route(web::get().to(trades::list_for_run)),
+            )
+            .service(
+                web::resource("/market-data/fetch")
+                    .route(web::post().to(market_data::fetch_and_store)),
+            )
+            .service(
+                web::resource("/market-data/status")
+                    .route(web::get().to(market_data::status)),
+            )
+            .service(
+                web::resource("/market-data/{symbol}")
+                    .route(web::get().to(market_data::query_bars)),
             )
             .service(
                 web::resource("/health")

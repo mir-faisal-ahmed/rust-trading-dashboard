@@ -5,16 +5,15 @@ use tracing_subscriber::EnvFilter;
 
 mod api;
 mod config;
+mod data;
 mod db;
 mod engine;
 mod ws;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // load .env if present
     dotenvy::dotenv().ok();
 
-    // initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
@@ -24,6 +23,12 @@ async fn main() -> std::io::Result<()> {
 
     let cfg = config::AppConfig::from_env();
 
+    if cfg.alpaca_configured() {
+        tracing::info!("alpaca credentials loaded (paper account)");
+    } else {
+        tracing::warn!("ALPACA_API_KEY / ALPACA_API_SECRET not set — market data fetching disabled");
+    }
+
     tracing::info!("connecting to database at {}", cfg.database_url);
 
     let pool = PgPoolOptions::new()
@@ -32,7 +37,6 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("failed to connect to database");
 
-    // run migrations
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
@@ -40,6 +44,11 @@ async fn main() -> std::io::Result<()> {
 
     tracing::info!("starting server on {}:{}", cfg.host, cfg.port);
 
+    let alpaca_client = web::Data::new(data::alpaca::AlpacaClient::new(
+        cfg.alpaca_api_key.clone(),
+        cfg.alpaca_api_secret.clone(),
+        cfg.alpaca_data_url.clone(),
+    ));
     let pool_data = web::Data::new(pool);
     let engine_state = web::Data::new(engine::EngineState::new());
 
@@ -54,6 +63,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(pool_data.clone())
             .app_data(engine_state.clone())
+            .app_data(alpaca_client.clone())
             .configure(api::configure_routes)
             .route("/ws", web::get().to(ws::ws_handler))
     })

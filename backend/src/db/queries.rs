@@ -139,3 +139,54 @@ pub async fn get_equity_curve(
     .fetch_all(pool)
     .await
 }
+
+// -- full benchmark runs (with nested data) --
+
+pub async fn get_full_benchmark_run(
+    pool: &PgPool,
+    id: Uuid,
+) -> Result<Option<FullBenchmarkRun>, sqlx::Error> {
+    let run = match get_benchmark_run(pool, id).await? {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+    Ok(Some(assemble_full_run(pool, run).await?))
+}
+
+pub async fn list_full_benchmark_runs(pool: &PgPool) -> Result<Vec<FullBenchmarkRun>, sqlx::Error> {
+    let runs = list_benchmark_runs(pool).await?;
+    let mut result = Vec::with_capacity(runs.len());
+    for run in runs {
+        result.push(assemble_full_run(pool, run).await?);
+    }
+    Ok(result)
+}
+
+async fn assemble_full_run(pool: &PgPool, run: BenchmarkRun) -> Result<FullBenchmarkRun, sqlx::Error> {
+    let strategy_name = get_strategy(pool, run.strategy_id)
+        .await?
+        .map(|s| s.name)
+        .unwrap_or_else(|| run.strategy_id.to_string());
+
+    let metrics = get_metrics_for_run(pool, run.id).await?;
+    let equity_snapshots = get_equity_curve(pool, run.id).await?;
+    let trades = get_trades_for_run(pool, run.id, 1000, 0).await?;
+
+    Ok(FullBenchmarkRun {
+        id: run.id,
+        strategy_id: run.strategy_id,
+        strategy_name,
+        start_date: run.start_date,
+        end_date: run.end_date,
+        status: run.status,
+        duration_ms: run.duration_ms,
+        initial_capital: run.initial_capital,
+        commission_bps: run.commission_bps,
+        slippage_bps: run.slippage_bps,
+        started_at: run.started_at,
+        completed_at: run.completed_at,
+        metrics,
+        equity_snapshots,
+        trades,
+    })
+}

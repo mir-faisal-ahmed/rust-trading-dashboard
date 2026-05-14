@@ -109,3 +109,24 @@ pub struct EquitySnapshot {
     pub benchmark_equity: f64,
     pub drawdown_pct: f64,
 }
+
+/// Full benchmark run with nested strategy name, metrics, equity curve, and trades.
+/// Returned by the /benchmarks/:id/full and /benchmarks/full endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FullBenchmarkRun {
+    pub id: Uuid,
+    pub strategy_id: Uuid,
+    pub strategy_name: String,
+    pub start_date: chrono::NaiveDate,
+    pub end_date: chrono::NaiveDate,
+    pub status: String,
+    pub duration_ms: Option<i64>,
+    pub initial_capital: f64,
+    pub commission_bps: f64,
+    pub slippage_bps: f64,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub metrics: Option<PerformanceMetrics>,
+    pub equity_snapshots: Vec<EquitySnapshot>,
+    pub trades: Vec<Trade>,
+}

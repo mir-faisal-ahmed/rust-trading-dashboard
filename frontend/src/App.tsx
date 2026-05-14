@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import type { ViewMode, BenchmarkRun } from "./types";
-import { strategies, benchmarkRuns } from "./data/mock";
+import { useAppData } from "./hooks/useAppData";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./components/Overview";
 import { StrategyTable } from "./components/StrategyTable";
@@ -13,10 +13,10 @@ import { ConfigView } from "./components/ConfigView";
 export default function App() {
   const [view, setView] = useState<ViewMode>("overview");
   const [selectedRun, setSelectedRun] = useState<BenchmarkRun | null>(null);
+  const { strategies, runs, loading, error } = useAppData();
 
   const runningCount = strategies.filter((s) => s.status === "running").length;
 
-  // keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       const keyMap: Record<string, ViewMode> = {
@@ -30,9 +30,7 @@ export default function App() {
         e.preventDefault();
         setView(keyMap[e.key]);
       }
-      if (e.key === "Escape") {
-        setSelectedRun(null);
-      }
+      if (e.key === "Escape") setSelectedRun(null);
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -43,8 +41,27 @@ export default function App() {
     setView("benchmarks");
   }, []);
 
-  // aggregate all trades from all runs for the global trade log
-  const allTrades = benchmarkRuns.flatMap((r) => r.trades);
+  const allTrades = runs.flatMap((r) => r.trades);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-900 font-mono text-neutral-400 text-sm">
+        connecting to backend...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-900 font-mono text-red-400 text-sm">
+        <div className="text-center space-y-2">
+          <div className="text-red-500 uppercase font-bold">connection error</div>
+          <div>{error}</div>
+          <div className="text-neutral-500 text-xs">is the backend running on port 8080?</div>
+        </div>
+      </div>
+    );
+  }
 
   function renderContent() {
     switch (view) {
@@ -52,7 +69,7 @@ export default function App() {
         return (
           <Overview
             strategies={strategies}
-            runs={benchmarkRuns}
+            runs={runs}
             onSelectRun={handleSelectRun}
           />
         );
@@ -61,14 +78,23 @@ export default function App() {
         return (
           <div className="space-y-3">
             <StrategyTable
-              runs={benchmarkRuns}
+              runs={runs}
               onSelect={setSelectedRun}
-              selectedId={selectedRun?.id || null}
+              selectedId={selectedRun?.id ?? null}
             />
-            {selectedRun && (
+            {selectedRun ? (
               <>
                 <div className="grid grid-cols-2 gap-3">
-                  <MetricsPanel metrics={selectedRun.metrics} title={`Metrics - ${selectedRun.strategy_name}`} />
+                  {selectedRun.metrics ? (
+                    <MetricsPanel
+                      metrics={selectedRun.metrics}
+                      title={`Metrics - ${selectedRun.strategy_name}`}
+                    />
+                  ) : (
+                    <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-xs text-neutral-500 flex items-center justify-center">
+                      metrics not available — run not completed
+                    </div>
+                  )}
                   <div className="space-y-3">
                     <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-xs">
                       <div className="text-amber-500 font-bold uppercase mb-2">Run Details</div>
@@ -105,19 +131,20 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                    {/* quick stats */}
                     <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-xs">
                       <div className="text-amber-500 font-bold uppercase mb-2">Quick Stats</div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                         <div className="flex justify-between">
                           <span className="text-neutral-500">Equity Start</span>
                           <span className="text-neutral-300">
-                            ${selectedRun.equity_curve.length > 0 ? selectedRun.equity_curve[0].equity.toLocaleString() : "N/A"}
+                            ${selectedRun.equity_curve.length > 0
+                              ? selectedRun.equity_curve[0].equity.toLocaleString()
+                              : "N/A"}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-neutral-500">Equity End</span>
-                          <span className={selectedRun.metrics.total_return_pct > 0 ? "text-green-400" : "text-red-400"}>
+                          <span className={(selectedRun.metrics?.total_return_pct ?? 0) > 0 ? "text-green-400" : "text-red-400"}>
                             ${selectedRun.equity_curve.length > 0
                               ? selectedRun.equity_curve[selectedRun.equity_curve.length - 1].equity.toLocaleString()
                               : "N/A"}
@@ -150,8 +177,7 @@ export default function App() {
                 />
                 <TradeLog trades={selectedRun.trades} strategyFilter={selectedRun.strategy_id} />
               </>
-            )}
-            {!selectedRun && (
+            ) : (
               <div className="border border-neutral-700 bg-neutral-950 px-4 py-8 text-center font-mono text-neutral-500 text-sm">
                 Select a strategy from the table above to view detailed metrics, equity curves, and trade logs.
               </div>
@@ -160,7 +186,7 @@ export default function App() {
         );
 
       case "comparison":
-        return <ComparisonView runs={benchmarkRuns} />;
+        return <ComparisonView runs={runs} />;
 
       case "trades":
         return <TradeLog trades={allTrades} />;
@@ -182,12 +208,9 @@ export default function App() {
         runningCount={runningCount}
       />
       <div className="flex-1 flex flex-col">
-        {/* header bar */}
         <div className="h-8 border-b border-neutral-700 bg-neutral-950 flex items-center justify-between px-3 font-mono text-xs">
           <div className="flex items-center gap-4">
-            <span className="text-neutral-400 uppercase tracking-wider">
-              {view}
-            </span>
+            <span className="text-neutral-400 uppercase tracking-wider">{view}</span>
             {selectedRun && view === "benchmarks" && (
               <>
                 <span className="text-neutral-600">/</span>
@@ -202,16 +225,11 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-4 text-neutral-500">
-            <span>
-              {new Date().toISOString().slice(0, 19).replace("T", " ")} UTC
-            </span>
+            <span>{new Date().toISOString().slice(0, 19).replace("T", " ")} UTC</span>
             <span className="text-green-400">CONNECTED</span>
           </div>
         </div>
-        {/* main content */}
-        <div className="flex-1 overflow-auto p-3">
-          {renderContent()}
-        </div>
+        <div className="flex-1 overflow-auto p-3">{renderContent()}</div>
       </div>
     </div>
   );
