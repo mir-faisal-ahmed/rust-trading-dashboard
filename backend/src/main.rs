@@ -8,6 +8,7 @@ mod config;
 mod data;
 mod db;
 mod engine;
+mod strategies;
 mod ws;
 
 #[actix_web::main]
@@ -41,6 +42,10 @@ async fn main() -> std::io::Result<()> {
         .run(&pool)
         .await
         .expect("failed to run database migrations");
+
+    strategies::registry::register_all(&pool)
+        .await
+        .expect("failed to register strategies");
 
     tracing::info!("starting server on {}:{}", cfg.host, cfg.port);
 
