@@ -2,6 +2,7 @@ use actix_web::{web, HttpResponse};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::data::alpaca::AlpacaClient;
 use crate::db::{models::CreateBenchmarkRun, queries};
 use crate::engine::{executor, EngineState};
 
@@ -64,6 +65,7 @@ pub async fn get_full(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> HttpRes
 pub async fn create(
     pool: web::Data<PgPool>,
     engine: web::Data<EngineState>,
+    alpaca: web::Data<AlpacaClient>,
     body: web::Json<CreateBenchmarkRun>,
 ) -> HttpResponse {
     let input = body.into_inner();
@@ -90,8 +92,9 @@ pub async fn create(
             if engine.start_run(run.id) {
                 let pool2 = pool.get_ref().clone();
                 let engine_arc = engine.clone().into_inner();
+                let alpaca2 = alpaca.get_ref().clone();
                 let run_id = run.id;
-                tokio::spawn(executor::execute_benchmark(pool2, engine_arc, run_id));
+                tokio::spawn(executor::execute_benchmark(pool2, engine_arc, run_id, alpaca2));
             }
             HttpResponse::Created().json(run)
         }

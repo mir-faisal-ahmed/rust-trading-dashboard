@@ -100,7 +100,24 @@ export interface Trade {
   slippage: number;
 }
 
-export type ViewMode = "overview" | "benchmarks" | "comparison" | "trades" | "config";
+export type ViewMode = "overview" | "benchmarks" | "comparison" | "trades" | "config" | "live";
+
+export interface MarketBar {
+  t: string;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+}
+
+export interface WatchlistItem {
+  symbol: string;
+  last: number;
+  change: number;
+  changePct: number;
+  category: string;
+}
 
 export interface SortConfig {
   key: string;

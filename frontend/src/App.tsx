@@ -9,6 +9,7 @@ import { EquityCurve } from "./components/EquityCurve";
 import { TradeLog } from "./components/TradeLog";
 import { ComparisonView } from "./components/ComparisonView";
 import { ConfigView } from "./components/ConfigView";
+import { LiveView } from "./components/LiveView";
 
 export default function App() {
   const [view, setView] = useState<ViewMode>("overview");
@@ -39,6 +40,7 @@ export default function App() {
         F3: "comparison",
         F4: "trades",
         F5: "config",
+        F6: "live",
       };
       if (keyMap[e.key]) {
         e.preventDefault();
@@ -259,6 +261,9 @@ export default function App() {
 
       case "config":
         return <ConfigView strategies={strategies} />;
+
+      case "live":
+        return <LiveView />;
 
       default:
         return null;

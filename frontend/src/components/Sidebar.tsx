@@ -13,6 +13,7 @@ const navItems: { key: ViewMode; label: string; shortcut: string }[] = [
   { key: "comparison", label: "COMPARE", shortcut: "F3" },
   { key: "trades", label: "TRADE LOG", shortcut: "F4" },
   { key: "config", label: "CONFIG", shortcut: "F5" },
+  { key: "live", label: "LIVE", shortcut: "F6" },
 ];
 
 export function Sidebar({ currentView, onViewChange, strategyCount, runningCount }: SidebarProps) {

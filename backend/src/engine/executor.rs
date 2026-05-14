@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::{metrics, EngineState};
+use crate::data::alpaca::{self, AlpacaClient};
 use crate::db::models::PerformanceMetrics;
 use crate::strategies::{self, Bar, RunConfig};
 
@@ -192,7 +193,7 @@ fn build_metrics(
 // Main executor entry point
 // ────────────────────────────────────────────────────────────────────────────
 
-pub async fn execute_benchmark(pool: PgPool, engine: Arc<EngineState>, run_id: Uuid) {
+pub async fn execute_benchmark(pool: PgPool, engine: Arc<EngineState>, run_id: Uuid, alpaca: AlpacaClient) {
     tracing::info!("starting benchmark execution for run {}", run_id);
 
     if let Err(e) = sqlx::query(
@@ -207,7 +208,7 @@ pub async fn execute_benchmark(pool: PgPool, engine: Arc<EngineState>, run_id: U
         return;
     }
 
-    let result = run_inner(&pool, run_id).await;
+    let result = run_inner(&pool, run_id, &alpaca).await;
 
     match result {
         Ok(()) => {
@@ -227,7 +228,7 @@ pub async fn execute_benchmark(pool: PgPool, engine: Arc<EngineState>, run_id: U
     engine.complete_run(run_id);
 }
 
-async fn run_inner(pool: &PgPool, run_id: Uuid) -> Result<(), String> {
+async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result<(), String> {
     let start_time = std::time::Instant::now();
 
     // ── Load run + strategy ───────────────────────────────────────────────
@@ -265,7 +266,7 @@ async fn run_inner(pool: &PgPool, run_id: Uuid) -> Result<(), String> {
         run.end_date
     );
 
-    // ── Fetch bars ────────────────────────────────────────────────────────
+    // ── Extract symbols early (needed for both auto-fetch and execution) ─
     let symbols: Vec<String> = strategy.parameters["symbols"]
         .as_array()
         .ok_or("strategy.parameters.symbols is not an array")?
@@ -273,6 +274,52 @@ async fn run_inner(pool: &PgPool, run_id: Uuid) -> Result<(), String> {
         .filter_map(|v| v.as_str().map(|s| s.to_string()))
         .collect();
 
+    // ── Auto-fetch bars from Alpaca if not already in DB ───────────────
+    if alpaca.is_configured() {
+        let start_str = run.start_date.format("%Y-%m-%d").to_string();
+        let end_str = run.end_date.format("%Y-%m-%d").to_string();
+
+        // Ensure SPY is fetched for benchmark comparison
+        let mut all_symbols = symbols.clone();
+        if !all_symbols.contains(&"SPY".to_string()) {
+            all_symbols.push("SPY".to_string());
+        }
+
+        for sym in &all_symbols {
+            let count: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM market_bars WHERE symbol=$1 AND timeframe='1Day' AND ts::date >= $2 AND ts::date <= $3",
+            )
+            .bind(sym.as_str())
+            .bind(run.start_date)
+            .bind(run.end_date)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            if count.0 < 10 {
+                tracing::info!("auto-fetching market data for {} ({} to {})", sym, start_str, end_str);
+                let is_crypto = sym.contains('/');
+                let fetched_bars = if is_crypto {
+                    alpaca.fetch_crypto_bars(sym, "1Day", &start_str, &end_str).await
+                } else {
+                    alpaca.fetch_stock_bars(sym, "1Day", &start_str, &end_str).await
+                };
+                match fetched_bars {
+                    Ok(raw_bars) => {
+                        let inserted = alpaca::store_bars(pool, sym, "1Day", &raw_bars)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        tracing::info!("auto-fetched {} bars for {} (inserted {})", raw_bars.len(), sym, inserted);
+                    }
+                    Err(e) => {
+                        tracing::warn!("failed to auto-fetch data for {}: {}", sym, e);
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Fetch bars ────────────────────────────────────────────────────────
     let mut bars_by_symbol: HashMap<String, Vec<Bar>> = HashMap::new();
     for sym in &symbols {
         let bars = fetch_bars(pool, sym, run.start_date, run.end_date)

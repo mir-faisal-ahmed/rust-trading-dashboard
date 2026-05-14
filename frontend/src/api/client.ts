@@ -163,5 +163,16 @@ export const api = {
       end: string;
       crypto?: boolean;
     }) => post<unknown>("/market-data/fetch", body),
+    getBars: (symbol: string, params?: { timeframe?: string; limit?: number; start?: string; end?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.timeframe) searchParams.set("timeframe", params.timeframe);
+      if (params?.limit) searchParams.set("limit", String(params.limit));
+      if (params?.start) searchParams.set("start", params.start);
+      if (params?.end) searchParams.set("end", params.end);
+      const qs = searchParams.toString();
+      return get<{ symbol: string; timeframe: string; bars: { t: string; o: number; h: number; l: number; c: number; v: number }[] }>(
+        `/market-data/${encodeURIComponent(symbol)}${qs ? `?${qs}` : ""}`
+      );
+    },
   },
 };

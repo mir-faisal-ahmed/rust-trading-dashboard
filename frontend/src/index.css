@@ -36,3 +36,19 @@ html, body, #root {
 table {
   border-collapse: collapse;
 }
+
+/* Force dark color scheme for native date pickers and selects */
+input[type="date"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8) hue-rotate(180deg);
+  cursor: pointer;
+}
+
+select {
+  color-scheme: dark;
+}
