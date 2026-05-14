@@ -6,6 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Strategy {
     pub id: Uuid,
+    pub code_key: Option<String>,
     pub name: String,
     pub strategy_type: String,
     pub asset_class: String,
