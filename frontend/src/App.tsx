@@ -13,9 +13,23 @@ import { ConfigView } from "./components/ConfigView";
 export default function App() {
   const [view, setView] = useState<ViewMode>("overview");
   const [selectedRun, setSelectedRun] = useState<BenchmarkRun | null>(null);
-  const { strategies, runs, loading, error } = useAppData();
+  const [showRunPanel, setShowRunPanel] = useState(false);
+  const [runForm, setRunForm] = useState({
+    strategyId: "",
+    startDate: "2023-01-01",
+    endDate: "2024-12-31",
+    initialCapital: 100000,
+  });
+  const [runError, setRunError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const { strategies, runs, loading, refreshing, error, runBenchmark } =
+    useAppData();
 
   const runningCount = strategies.filter((s) => s.status === "running").length;
+  const activeRuns = runs.filter(
+    (r) => r.status === "queued" || r.status === "running"
+  ).length;
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -30,7 +44,10 @@ export default function App() {
         e.preventDefault();
         setView(keyMap[e.key]);
       }
-      if (e.key === "Escape") setSelectedRun(null);
+      if (e.key === "Escape") {
+        setSelectedRun(null);
+        setShowRunPanel(false);
+      }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -40,6 +57,34 @@ export default function App() {
     setSelectedRun(run);
     setView("benchmarks");
   }, []);
+
+  const handleOpenRunPanel = () => {
+    const defaultStrategy = strategies.find((s) => s.status === "idle");
+    if (defaultStrategy) {
+      setRunForm((f) => ({ ...f, strategyId: defaultStrategy.id }));
+    }
+    setRunError(null);
+    setShowRunPanel(true);
+  };
+
+  const handleSubmitRun = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!runForm.strategyId) {
+      setRunError("Select a strategy");
+      return;
+    }
+    setSubmitting(true);
+    setRunError(null);
+    try {
+      await runBenchmark(runForm);
+      setShowRunPanel(false);
+      setView("benchmarks");
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : "Failed to start run");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const allTrades = runs.flatMap((r) => r.trades);
 
@@ -57,7 +102,9 @@ export default function App() {
         <div className="text-center space-y-2">
           <div className="text-red-500 uppercase font-bold">connection error</div>
           <div>{error}</div>
-          <div className="text-neutral-500 text-xs">is the backend running on port 8080?</div>
+          <div className="text-neutral-500 text-xs">
+            is the backend running on port 8080?
+          </div>
         </div>
       </div>
     );
@@ -71,6 +118,7 @@ export default function App() {
             strategies={strategies}
             runs={runs}
             onSelectRun={handleSelectRun}
+            onRunBenchmark={handleOpenRunPanel}
           />
         );
 
@@ -92,61 +140,74 @@ export default function App() {
                     />
                   ) : (
                     <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-xs text-neutral-500 flex items-center justify-center">
-                      metrics not available — run not completed
+                      {selectedRun.status === "running" || selectedRun.status === "queued"
+                        ? `run is ${selectedRun.status}…`
+                        : "metrics not available — run not completed"}
                     </div>
                   )}
                   <div className="space-y-3">
                     <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-xs">
-                      <div className="text-amber-500 font-bold uppercase mb-2">Run Details</div>
+                      <div className="text-amber-500 font-bold uppercase mb-2">
+                        Run Details
+                      </div>
                       <div className="space-y-1">
-                        <div className="flex justify-between text-neutral-400">
-                          <span className="text-neutral-500">Run ID</span>
-                          <span>{selectedRun.id}</span>
-                        </div>
-                        <div className="flex justify-between text-neutral-400">
-                          <span className="text-neutral-500">Strategy ID</span>
-                          <span>{selectedRun.strategy_id}</span>
-                        </div>
-                        <div className="flex justify-between text-neutral-400">
-                          <span className="text-neutral-500">Period</span>
-                          <span>{selectedRun.start_date} to {selectedRun.end_date}</span>
-                        </div>
-                        <div className="flex justify-between text-neutral-400">
-                          <span className="text-neutral-500">Duration</span>
-                          <span>{selectedRun.duration_ms}ms</span>
-                        </div>
-                        <div className="flex justify-between text-neutral-400">
-                          <span className="text-neutral-500">Status</span>
-                          <span className={
-                            selectedRun.status === "completed" ? "text-green-400" :
-                            selectedRun.status === "running" ? "text-blue-400" :
-                            "text-neutral-400"
-                          }>
-                            {selectedRun.status}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-neutral-400">
-                          <span className="text-neutral-500">Started</span>
-                          <span>{selectedRun.started_at.replace("T", " ").slice(0, 19)}</span>
-                        </div>
+                        {[
+                          ["Run ID", selectedRun.id.slice(0, 8) + "…"],
+                          ["Strategy", selectedRun.strategy_name],
+                          ["Period", `${selectedRun.start_date} → ${selectedRun.end_date}`],
+                          ["Duration", selectedRun.duration_ms ? `${selectedRun.duration_ms}ms` : "—"],
+                          ["Status", selectedRun.status],
+                          ["Started", selectedRun.started_at.replace("T", " ").slice(0, 19)],
+                        ].map(([k, v]) => (
+                          <div key={k} className="flex justify-between text-neutral-400">
+                            <span className="text-neutral-500">{k}</span>
+                            <span
+                              className={
+                                k === "Status"
+                                  ? selectedRun.status === "completed"
+                                    ? "text-green-400"
+                                    : selectedRun.status === "running"
+                                    ? "text-blue-400"
+                                    : selectedRun.status === "failed"
+                                    ? "text-red-400"
+                                    : "text-yellow-400"
+                                  : ""
+                              }
+                            >
+                              {v}
+                            </span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                     <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-xs">
-                      <div className="text-amber-500 font-bold uppercase mb-2">Quick Stats</div>
+                      <div className="text-amber-500 font-bold uppercase mb-2">
+                        Quick Stats
+                      </div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                         <div className="flex justify-between">
                           <span className="text-neutral-500">Equity Start</span>
                           <span className="text-neutral-300">
-                            ${selectedRun.equity_curve.length > 0
+                            $
+                            {selectedRun.equity_curve.length > 0
                               ? selectedRun.equity_curve[0].equity.toLocaleString()
                               : "N/A"}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-neutral-500">Equity End</span>
-                          <span className={(selectedRun.metrics?.total_return_pct ?? 0) > 0 ? "text-green-400" : "text-red-400"}>
-                            ${selectedRun.equity_curve.length > 0
-                              ? selectedRun.equity_curve[selectedRun.equity_curve.length - 1].equity.toLocaleString()
+                          <span
+                            className={
+                              (selectedRun.metrics?.total_return_pct ?? 0) > 0
+                                ? "text-green-400"
+                                : "text-red-400"
+                            }
+                          >
+                            $
+                            {selectedRun.equity_curve.length > 0
+                              ? selectedRun.equity_curve[
+                                  selectedRun.equity_curve.length - 1
+                                ].equity.toLocaleString()
                               : "N/A"}
                           </span>
                         </div>
@@ -175,11 +236,16 @@ export default function App() {
                   drawdown={selectedRun.drawdown_curve}
                   strategyName={selectedRun.strategy_name}
                 />
-                <TradeLog trades={selectedRun.trades} strategyFilter={selectedRun.strategy_id} />
+                <TradeLog
+                  trades={selectedRun.trades}
+                  strategyFilter={selectedRun.strategy_id}
+                />
               </>
             ) : (
               <div className="border border-neutral-700 bg-neutral-950 px-4 py-8 text-center font-mono text-neutral-500 text-sm">
-                Select a strategy from the table above to view detailed metrics, equity curves, and trade logs.
+                {runs.length === 0
+                  ? "No benchmark runs yet. Click [RUN] in the toolbar to execute a strategy."
+                  : "Select a run from the table above to view metrics, equity curves, and trades."}
               </div>
             )}
           </div>
@@ -208,7 +274,8 @@ export default function App() {
         runningCount={runningCount}
       />
       <div className="flex-1 flex flex-col">
-        <div className="h-8 border-b border-neutral-700 bg-neutral-950 flex items-center justify-between px-3 font-mono text-xs">
+        {/* Top bar */}
+        <div className="h-8 border-b border-neutral-700 bg-neutral-950 flex items-center justify-between px-3 font-mono text-xs shrink-0">
           <div className="flex items-center gap-4">
             <span className="text-neutral-400 uppercase tracking-wider">{view}</span>
             {selectedRun && view === "benchmarks" && (
@@ -224,11 +291,120 @@ export default function App() {
               </>
             )}
           </div>
-          <div className="flex items-center gap-4 text-neutral-500">
+          <div className="flex items-center gap-3 text-neutral-500">
+            {refreshing && (
+              <span className="text-blue-400 animate-pulse">polling…</span>
+            )}
+            {activeRuns > 0 && (
+              <span className="text-yellow-400">
+                {activeRuns} run{activeRuns > 1 ? "s" : ""} active
+              </span>
+            )}
             <span>{new Date().toISOString().slice(0, 19).replace("T", " ")} UTC</span>
             <span className="text-green-400">CONNECTED</span>
+            <button
+              onClick={handleOpenRunPanel}
+              className="border border-amber-600 text-amber-400 hover:bg-amber-900/30 px-2 py-0.5 uppercase tracking-wider"
+            >
+              [RUN]
+            </button>
           </div>
         </div>
+
+        {/* Inline run panel */}
+        {showRunPanel && (
+          <div className="border-b border-neutral-700 bg-neutral-950 px-4 py-3 font-mono text-xs">
+            <form
+              onSubmit={(e) => void handleSubmitRun(e)}
+              className="flex items-end gap-4 flex-wrap"
+            >
+              <div className="text-amber-500 font-bold uppercase self-center">
+                New Benchmark Run
+              </div>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-neutral-500">Strategy</span>
+                <select
+                  value={runForm.strategyId}
+                  onChange={(e) =>
+                    setRunForm((f) => ({ ...f, strategyId: e.target.value }))
+                  }
+                  className="bg-neutral-800 border border-neutral-600 text-neutral-200 px-2 py-1 font-mono text-xs focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">— select —</option>
+                  {strategies.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-neutral-500">Start Date</span>
+                <input
+                  type="date"
+                  value={runForm.startDate}
+                  onChange={(e) =>
+                    setRunForm((f) => ({ ...f, startDate: e.target.value }))
+                  }
+                  className="bg-neutral-800 border border-neutral-600 text-neutral-200 px-2 py-1 font-mono text-xs focus:outline-none focus:border-amber-500"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-neutral-500">End Date</span>
+                <input
+                  type="date"
+                  value={runForm.endDate}
+                  onChange={(e) =>
+                    setRunForm((f) => ({ ...f, endDate: e.target.value }))
+                  }
+                  className="bg-neutral-800 border border-neutral-600 text-neutral-200 px-2 py-1 font-mono text-xs focus:outline-none focus:border-amber-500"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-neutral-500">Capital ($)</span>
+                <input
+                  type="number"
+                  min={1000}
+                  step={1000}
+                  value={runForm.initialCapital}
+                  onChange={(e) =>
+                    setRunForm((f) => ({
+                      ...f,
+                      initialCapital: Number(e.target.value),
+                    }))
+                  }
+                  className="bg-neutral-800 border border-neutral-600 text-neutral-200 px-2 py-1 font-mono text-xs w-28 focus:outline-none focus:border-amber-500"
+                />
+              </label>
+
+              <div className="flex gap-2 items-end">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="border border-amber-600 text-amber-400 hover:bg-amber-900/30 disabled:opacity-40 px-3 py-1 uppercase tracking-wider"
+                >
+                  {submitting ? "Queuing…" : "Execute"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRunPanel(false)}
+                  className="border border-neutral-600 text-neutral-400 hover:text-neutral-200 px-3 py-1"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {runError && (
+                <span className="text-red-400 self-center">{runError}</span>
+              )}
+            </form>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto p-3">{renderContent()}</div>
       </div>
     </div>

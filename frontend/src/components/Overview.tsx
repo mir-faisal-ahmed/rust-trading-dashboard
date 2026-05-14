@@ -4,6 +4,7 @@ interface OverviewProps {
   strategies: Strategy[];
   runs: BenchmarkRun[];
   onSelectRun: (run: BenchmarkRun) => void;
+  onRunBenchmark: () => void;
 }
 
 function StatBlock({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -15,7 +16,7 @@ function StatBlock({ label, value, color }: { label: string; value: string; colo
   );
 }
 
-export function Overview({ strategies, runs, onSelectRun }: OverviewProps) {
+export function Overview({ strategies, runs, onSelectRun, onRunBenchmark }: OverviewProps) {
   const completed = runs.filter((r) => r.status === "completed");
   const runningCount = strategies.filter((s) => s.status === "running").length;
   const failedCount  = strategies.filter((s) => s.status === "failed").length;
@@ -155,7 +156,13 @@ export function Overview({ strategies, runs, onSelectRun }: OverviewProps) {
         </div>
       ) : (
         <div className="border border-neutral-700 bg-neutral-950 px-4 py-8 text-center text-neutral-600">
-          no completed benchmark runs yet
+          <div className="mb-3">no completed benchmark runs yet</div>
+          <button
+            onClick={onRunBenchmark}
+            className="border border-amber-600 text-amber-400 hover:bg-amber-900/30 px-4 py-1.5 font-mono text-xs uppercase tracking-wider"
+          >
+            Run First Benchmark
+          </button>
         </div>
       )}
     </div>
