@@ -20,7 +20,7 @@ impl AppConfig {
             workers: std::env::var("WORKERS")
                 .ok()
                 .and_then(|w| w.parse().ok())
-                .unwrap_or_else(num_cpus::get),
+                .unwrap_or_else(|| num_cpus::get()),
             db_max_connections: std::env::var("DB_MAX_CONNECTIONS")
                 .ok()
                 .and_then(|c| c.parse().ok())

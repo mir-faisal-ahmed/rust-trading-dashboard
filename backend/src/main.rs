@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer, middleware};
+use actix_web::{web, App, HttpServer};
 use sqlx::postgres::PgPoolOptions;
 use tracing_subscriber::EnvFilter;
 

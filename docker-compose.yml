@@ -12,7 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+      # REMOVED: - ./backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/...
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U stratbench"]
       interval: 5s
@@ -22,8 +22,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: ../Dockerfile.backend
+      context: . # FIXED: set to root to match Dockerfile.backend COPY commands
+      dockerfile: Dockerfile.backend
     container_name: stratbench-api
     environment:
       DATABASE_URL: postgres://stratbench:stratbench@postgres:5432/stratbench
