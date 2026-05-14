@@ -114,3 +114,105 @@ pub fn conditional_var(daily_returns: &[f64], confidence: f64) -> f64 {
     let tail: &[f64] = &sorted[..cutoff.max(1)];
     tail.iter().sum::<f64>() / tail.len() as f64
 }
+
+/// Sample skewness of a return series.
+pub fn skewness(returns: &[f64]) -> f64 {
+    let n = returns.len() as f64;
+    if n < 3.0 {
+        return 0.0;
+    }
+    let mean = returns.iter().sum::<f64>() / n;
+    let variance = returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n;
+    let std = variance.sqrt();
+    if std == 0.0 {
+        return 0.0;
+    }
+    let m3 = returns.iter().map(|r| ((r - mean) / std).powi(3)).sum::<f64>() / n;
+    m3 * (n * (n - 1.0)).sqrt() / (n - 2.0)
+}
+
+/// Excess kurtosis of a return series.
+pub fn kurtosis(returns: &[f64]) -> f64 {
+    let n = returns.len() as f64;
+    if n < 4.0 {
+        return 0.0;
+    }
+    let mean = returns.iter().sum::<f64>() / n;
+    let variance = returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n;
+    let std = variance.sqrt();
+    if std == 0.0 {
+        return 0.0;
+    }
+    returns.iter().map(|r| ((r - mean) / std).powi(4)).sum::<f64>() / n - 3.0
+}
+
+/// CAPM beta and annualised alpha (alpha returned as percentage).
+pub fn beta_and_alpha(
+    strategy: &[f64],
+    benchmark: &[f64],
+    risk_free_annual: f64,
+) -> (f64, f64) {
+    let n = strategy.len().min(benchmark.len());
+    if n < 2 {
+        return (1.0, 0.0);
+    }
+    let s = &strategy[..n];
+    let b = &benchmark[..n];
+    let s_mean = s.iter().sum::<f64>() / n as f64;
+    let b_mean = b.iter().sum::<f64>() / n as f64;
+    let cov = (0..n).map(|i| (s[i] - s_mean) * (b[i] - b_mean)).sum::<f64>() / n as f64;
+    let b_var = (0..n).map(|i| (b[i] - b_mean).powi(2)).sum::<f64>() / n as f64;
+    let beta = if b_var == 0.0 { 1.0 } else { cov / b_var };
+    let rf_daily = risk_free_annual / 252.0;
+    let s_ann = (1.0 + s_mean - rf_daily).powi(252) - 1.0;
+    let b_ann = (1.0 + b_mean - rf_daily).powi(252) - 1.0;
+    let alpha = s_ann - beta * b_ann;
+    (beta, alpha * 100.0)
+}
+
+/// Omega ratio: sum of gains above `threshold` / sum of losses below.
+pub fn omega_ratio(returns: &[f64], threshold: f64) -> f64 {
+    let gains: f64 = returns.iter().map(|&r| (r - threshold).max(0.0)).sum();
+    let losses: f64 = returns.iter().map(|&r| (threshold - r).max(0.0)).sum();
+    if losses == 0.0 {
+        f64::INFINITY
+    } else {
+        gains / losses
+    }
+}
+
+/// Tail ratio: 95th percentile return / |5th percentile return|.
+pub fn tail_ratio(returns: &[f64]) -> f64 {
+    if returns.len() < 20 {
+        return 1.0;
+    }
+    let mut sorted = returns.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = sorted.len();
+    let p95 = sorted[(n as f64 * 0.95) as usize];
+    let p05 = sorted[(n as f64 * 0.05) as usize];
+    if p05.abs() < 1e-10 {
+        1.0
+    } else {
+        p95 / p05.abs()
+    }
+}
+
+/// Annualised information ratio vs a benchmark.
+pub fn information_ratio(strategy: &[f64], benchmark: &[f64]) -> f64 {
+    let n = strategy.len().min(benchmark.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let active: Vec<f64> = (0..n).map(|i| strategy[i] - benchmark[i]).collect();
+    let mean = active.iter().sum::<f64>() / n as f64;
+    let tracking_error = {
+        let var = active.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n as f64;
+        var.sqrt() * (252.0_f64).sqrt()
+    };
+    if tracking_error == 0.0 {
+        return 0.0;
+    }
+    let ann = (1.0 + mean).powi(252) - 1.0;
+    ann / tracking_error
+}

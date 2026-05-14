@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::db::{models::CreateBenchmarkRun, queries};
-use crate::engine::EngineState;
+use crate::engine::{executor, EngineState};
 
 pub async fn list(pool: web::Data<PgPool>) -> HttpResponse {
     match queries::list_benchmark_runs(pool.get_ref()).await {
@@ -86,6 +86,13 @@ pub async fn create(
     match queries::create_benchmark_run(pool.get_ref(), &input).await {
         Ok(run) => {
             engine.queue_run(run.id);
+            // Spawn execution immediately if capacity allows.
+            if engine.start_run(run.id) {
+                let pool2 = pool.get_ref().clone();
+                let engine_arc = engine.clone().into_inner();
+                let run_id = run.id;
+                tokio::spawn(executor::execute_benchmark(pool2, engine_arc, run_id));
+            }
             HttpResponse::Created().json(run)
         }
         Err(e) => {
