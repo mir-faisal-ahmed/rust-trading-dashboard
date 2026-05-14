@@ -32,6 +32,10 @@ services:
       DB_MAX_CONNECTIONS: 20
       MAX_CONCURRENT_RUNS: 4
       RUST_LOG: info,stratbench=debug
+      ALPACA_API_KEY: ${ALPACA_API_KEY}
+      ALPACA_API_SECRET: ${ALPACA_API_SECRET}
+      ALPACA_BASE_URL: ${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
+      ALPACA_DATA_URL: ${ALPACA_DATA_URL:-https://data.alpaca.markets}
     ports:
       - "8080:8080"
     depends_on:
