@@ -145,6 +145,14 @@ export const api = {
       const raw = await get<unknown>(`/benchmarks/${id}/full`);
       return mapRun(raw);
     },
+    create: (body: {
+      strategy_id: string;
+      start_date: string;
+      end_date: string;
+      initial_capital?: number;
+      commission_bps?: number;
+      slippage_bps?: number;
+    }) => post<{ id: string; status: string }>("/benchmarks", body),
   },
   marketData: {
     status: () => get<unknown>("/market-data/status"),
