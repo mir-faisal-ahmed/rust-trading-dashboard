@@ -244,38 +244,58 @@ Use Rust for the execution engine and API server. Use Python for research, model
 
 ```
 .
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ComparisonView.tsx
+│   │   │   ├── ConfigView.tsx
+│   │   │   ├── EquityCurve.tsx
+│   │   │   ├── MetricsPanel.tsx
+│   │   │   ├── Overview.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── StrategyTable.tsx
+│   │   │   └── TradeLog.tsx
+│   │   ├── data/
+│   │   │   └── mock.ts
+│   │   ├── types/
+│   │   │   └── index.ts
+│   │   ├── utils/
+│   │   │   └── cn.ts
+│   │   ├── App.tsx
+│   │   ├── index.css
+│   │   └── main.tsx
+│   ├── index.html
+│   ├── nginx.conf
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   └── Dockerfile
 ├── backend/
-│   ├── Cargo.toml
-│   ├── .env.example
+│   ├── src/
+│   │   ├── api/
+│   │   │   ├── benchmarks.rs
+│   │   │   ├── mod.rs
+│   │   │   ├── strategies.rs
+│   │   │   └── trades.rs
+│   │   ├── db/
+│   │   │   ├── mod.rs
+│   │   │   ├── models.rs
+│   │   │   └── queries.rs
+│   │   ├── engine/
+│   │   │   ├── executor.rs
+│   │   │   ├── metrics.rs
+│   │   │   └── mod.rs
+│   │   ├── ws/
+│   │   │   └── mod.rs
+│   │   ├── config.rs
+│   │   └── main.rs
 │   ├── migrations/
 │   │   └── 001_init.sql
-│   └── src/
-│       ├── main.rs              # server entry point
-│       ├── config.rs            # env configuration
-│       ├── api/
-│       │   ├── mod.rs           # route configuration
-│       │   ├── strategies.rs    # strategy CRUD handlers
-│       │   ├── benchmarks.rs    # benchmark run handlers
-│       │   └── trades.rs        # trade query handlers
-│       ├── db/
-│       │   ├── mod.rs
-│       │   ├── models.rs        # database models
-│       │   └── queries.rs       # SQL queries
-│       ├── engine/
-│       │   ├── mod.rs           # execution engine state
-│       │   ├── executor.rs      # benchmark runner
-│       │   └── metrics.rs       # performance calculations
-│       └── ws/
-│           └── mod.rs           # WebSocket handler
-├── src/                         # React frontend
-│   ├── App.tsx
-│   ├── types/
-│   ├── data/
-│   └── components/
+│   ├── .env.example
+│   ├── Cargo.toml
+│   ├── Cargo.lock
+│   └── Dockerfile
 ├── docker-compose.yml
-├── Dockerfile.backend
-├── Dockerfile.frontend
-├── nginx.conf
 └── README.md
 ```
 
