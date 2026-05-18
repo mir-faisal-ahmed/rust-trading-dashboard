@@ -78,6 +78,8 @@ fn build_metrics(
     trades: &[crate::strategies::RawTrade],
     bench_equity_curve: &[(DateTime<Utc>, f64)],
 ) -> PerformanceMetrics {
+    // Clamp non-finite values so they don't corrupt the DB or UI.
+    let sanitize = |v: f64| if v.is_finite() { v } else { 0.0 };
     let equities: Vec<f64> = equity_curve.iter().map(|(_, e)| *e).collect();
     let daily_returns: Vec<f64> = equities
         .windows(2)
@@ -148,32 +150,32 @@ fn build_metrics(
     PerformanceMetrics {
         id: Uuid::new_v4(),
         benchmark_run_id: run_id,
-        total_return_pct: total_return,
-        annualized_return_pct: ann_return,
-        sharpe_ratio: sharpe,
-        sortino_ratio: sortino,
-        calmar_ratio: calmar,
-        max_drawdown_pct: max_dd * 100.0,
+        total_return_pct: sanitize(total_return),
+        annualized_return_pct: sanitize(ann_return),
+        sharpe_ratio: sanitize(sharpe),
+        sortino_ratio: sanitize(sortino),
+        calmar_ratio: sanitize(calmar),
+        max_drawdown_pct: sanitize(max_dd * 100.0),
         max_drawdown_duration_days: max_dd_days as i32,
-        volatility_ann_pct: vol_ann,
-        win_rate_pct: win_rate,
-        profit_factor: pf,
+        volatility_ann_pct: sanitize(vol_ann),
+        win_rate_pct: sanitize(win_rate),
+        profit_factor: sanitize(pf),
         total_trades,
-        avg_trade_return_pct: avg_trade,
-        avg_win_pct: avg_win,
-        avg_loss_pct: avg_loss,
-        expectancy,
-        avg_holding_period_hours: avg_hold_hrs,
-        skewness: skew,
-        kurtosis: kurt,
-        var_95_pct: var95,
-        cvar_95_pct: cvar95,
-        beta,
-        alpha_ann_pct: alpha_ann,
-        information_ratio: ir,
-        treynor_ratio: treynor,
-        omega_ratio: omega,
-        tail_ratio: tail,
+        avg_trade_return_pct: sanitize(avg_trade),
+        avg_win_pct: sanitize(avg_win),
+        avg_loss_pct: sanitize(avg_loss),
+        expectancy: sanitize(expectancy),
+        avg_holding_period_hours: sanitize(avg_hold_hrs),
+        skewness: sanitize(skew),
+        kurtosis: sanitize(kurt),
+        var_95_pct: sanitize(var95),
+        cvar_95_pct: sanitize(cvar95),
+        beta: sanitize(beta),
+        alpha_ann_pct: sanitize(alpha_ann),
+        information_ratio: sanitize(ir),
+        treynor_ratio: sanitize(treynor),
+        omega_ratio: sanitize(omega),
+        tail_ratio: sanitize(tail),
     }
 }
 
@@ -308,9 +310,17 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
     }
 
     // ── Fetch bars ────────────────────────────────────────────────────────
+    // Load 300-bar lookback so indicator-heavy strategies (XGBoost, FinRL)
+    // have enough history for warm-up. Bars before start_date are included
+    // in the bar series but equity curve recording begins at start_date.
+    let lookback_start = {
+        use chrono::Duration;
+        // 300 trading days ≈ 420 calendar days
+        run.start_date - Duration::days(420)
+    };
     let mut bars_by_symbol: HashMap<String, Vec<Bar>> = HashMap::new();
     for sym in &symbols {
-        let bars = fetch_bars(pool, sym, run.start_date, run.end_date)
+        let bars = fetch_bars(pool, sym, lookback_start, run.end_date)
             .await
             .map_err(|e| e.to_string())?;
         if !bars.is_empty() {
@@ -338,20 +348,23 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
     );
 
     // ── Build buy-and-hold benchmark from actual traded symbols ─────────
-    // Equal-weight buy-and-hold: split capital across traded symbols,
-    // track mark-to-market as if we bought at the first bar and held.
+    // Equal-weight buy-and-hold: split capital across traded symbols.
+    // Anchor the first price to run.start_date so benchmark equity = initial_capital at day 0.
     let traded_symbols: Vec<&str> = bars_by_symbol.keys().map(|s| s.as_str()).collect();
     let n_traded = traded_symbols.len().max(1) as f64;
     let capital_per_sym = run.initial_capital / n_traded;
 
-    // For each traded symbol, record first-bar price for normalisation
+    // For each traded symbol, use the first bar on or after run.start_date as the reference price
     let first_prices: HashMap<&str, f64> = traded_symbols
         .iter()
         .filter_map(|&sym| {
             bars_by_symbol
                 .get(sym)
-                .and_then(|bars| bars.first())
-                .map(|b| (sym, b.close))
+                .and_then(|bars| {
+                    bars.iter()
+                        .find(|b| b.ts.date_naive() >= run.start_date)
+                        .map(|b| (sym, b.close))
+                })
         })
         .collect();
 
@@ -367,6 +380,10 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
             _ => continue,
         };
         for bar in bars {
+            // Only include bars within the benchmark window
+            if bar.ts.date_naive() < run.start_date {
+                continue;
+            }
             let bh_equity = capital_per_sym * (bar.close / first_price);
             *bench_map.entry(bar.ts.timestamp()).or_insert(0.0) += bh_equity;
         }
@@ -388,8 +405,22 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
         .map(|(dt, eq)| (dt.date_naive(), *eq))
         .collect();
 
+    // Build a fast lookup from date → predicted equity for FinRL strategies
+    let pred_by_date: HashMap<NaiveDate, f64> = result.predicted_equity
+        .as_ref()
+        .map(|curve| {
+            curve.iter()
+                .map(|(dt, eq)| (dt.date_naive(), *eq))
+                .collect()
+        })
+        .unwrap_or_default();
+
     let mut peak_equity = run.initial_capital;
     for (ts, equity) in &result.equity_curve {
+        // Skip lookback bars -- only persist snapshots within the benchmark window
+        if ts.date_naive() < run.start_date {
+            continue;
+        }
         if *equity > peak_equity {
             peak_equity = *equity;
         }
@@ -402,12 +433,13 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
             .get(&ts.date_naive())
             .copied()
             .unwrap_or(run.initial_capital);
+        let pred_eq: Option<f64> = pred_by_date.get(&ts.date_naive()).copied();
 
         sqlx::query(
             r#"
             INSERT INTO equity_snapshots
-                (id, benchmark_run_id, timestamp, equity, benchmark_equity, drawdown_pct)
-            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+                (id, benchmark_run_id, timestamp, equity, benchmark_equity, drawdown_pct, predicted_equity)
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
             "#,
         )
         .bind(run_id)
@@ -415,6 +447,7 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
         .bind(*equity)
         .bind(bench_eq)
         .bind(drawdown_pct)
+        .bind(pred_eq)
         .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -453,11 +486,18 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
     }
 
     // ── Compute and persist metrics ───────────────────────────────────────
-    if !result.equity_curve.is_empty() {
+    // Filter equity curve to only the benchmark window for metric calculations
+    let windowed_curve: Vec<(DateTime<Utc>, f64)> = result.equity_curve
+        .iter()
+        .filter(|(ts, _)| ts.date_naive() >= run.start_date)
+        .copied()
+        .collect();
+
+    if !windowed_curve.is_empty() {
         let m = build_metrics(
             run_id,
             run.initial_capital,
-            &result.equity_curve,
+            &windowed_curve,
             &result.trades,
             &bench_equity_curve,
         );
