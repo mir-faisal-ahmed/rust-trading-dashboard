@@ -1,25 +1,34 @@
 # Multi-stage build for the Rust backend.
-# Stage 1: build the binary
+# Build context is the repository root (set in docker-compose.yml) so that
+# python/protos/finrl_service.proto is accessible during tonic-build.
+
+# ── Stage 1: build the binary ─────────────────────────────────────────────
 FROM rust:1.88-slim-bookworm AS builder
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libssl-dev protobuf-compiler && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# cache dependency builds
-COPY Cargo.toml Cargo.lock* ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+# Copy proto definitions needed by build.rs (tonic-build)
+COPY python/protos ./python/protos
+
+# Cache dependency compilation using a dummy binary
+COPY backend/Cargo.toml backend/Cargo.lock* ./
+RUN mkdir -p src && echo "fn main() {}" > src/main.rs
+COPY backend/build.rs ./
 RUN cargo build --release && rm -rf src
 
-# build the actual application
-COPY src ./src
-COPY migrations ./migrations
+# Build the real application
+COPY backend/src ./src
+COPY backend/migrations ./migrations
 RUN touch src/main.rs && cargo build --release
 
-# Stage 2: minimal runtime image
+# ── Stage 2: minimal runtime image ────────────────────────────────────────
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates libssl3 && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
