@@ -22,6 +22,13 @@ config = "0.14"
 num_cpus = "1.16"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
+# gRPC client for FinRL Python service
+tonic  = { version = "0.12", features = ["transport"] }
+prost  = "0.13"
+
+[build-dependencies]
+tonic-build = "0.12"
+
 [profile.release]
 opt-level = 3
 lto = true

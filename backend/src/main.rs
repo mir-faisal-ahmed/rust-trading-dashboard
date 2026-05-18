@@ -8,6 +8,7 @@ mod config;
 mod data;
 mod db;
 mod engine;
+mod grpc;
 mod strategies;
 mod ws;
 
@@ -27,8 +28,11 @@ async fn main() -> std::io::Result<()> {
     if cfg.alpaca_configured() {
         tracing::info!("alpaca credentials loaded (paper account)");
     } else {
-        tracing::warn!("ALPACA_API_KEY / ALPACA_API_SECRET not set — market data fetching disabled");
+        tracing::warn!("ALPACA_API_KEY / ALPACA_API_SECRET not set -- market data fetching disabled");
     }
+
+    tracing::info!("FinRL gRPC endpoint: {}", cfg.finrl_grpc_endpoint);
+    tracing::info!("Redis URL: {}", cfg.redis_url);
 
     tracing::info!("connecting to database at {}", cfg.database_url);
 

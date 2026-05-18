@@ -9,6 +9,10 @@ pub struct AppConfig {
     pub alpaca_api_secret: String,
     pub alpaca_data_url: String,
     pub alpaca_base_url: String,
+    /// gRPC endpoint for the Python FinRL inference service
+    pub finrl_grpc_endpoint: String,
+    /// Redis URL for caching (used by the Python service; logged here for visibility)
+    pub redis_url: String,
 }
 
 impl AppConfig {
@@ -35,10 +39,18 @@ impl AppConfig {
                 .unwrap_or_else(|_| "https://data.alpaca.markets".to_string()),
             alpaca_base_url: std::env::var("ALPACA_BASE_URL")
                 .unwrap_or_else(|_| "https://paper-api.alpaca.markets".to_string()),
+            finrl_grpc_endpoint: std::env::var("FINRL_GRPC_ENDPOINT")
+                .unwrap_or_else(|_| "http://localhost:50051".to_string()),
+            redis_url: std::env::var("REDIS_URL")
+                .unwrap_or_else(|_| "redis://localhost:6379".to_string()),
         }
     }
 
     pub fn alpaca_configured(&self) -> bool {
         !self.alpaca_api_key.is_empty() && !self.alpaca_api_secret.is_empty()
+    }
+
+    pub fn finrl_configured(&self) -> bool {
+        !self.finrl_grpc_endpoint.is_empty()
     }
 }
