@@ -76,30 +76,18 @@ fn build_metrics(
     initial_capital: f64,
     equity_curve: &[(DateTime<Utc>, f64)],
     trades: &[crate::strategies::RawTrade],
-    spy_bars: &[Bar],
+    bench_equity_curve: &[(DateTime<Utc>, f64)],
 ) -> PerformanceMetrics {
-    // Daily strategy returns.
     let equities: Vec<f64> = equity_curve.iter().map(|(_, e)| *e).collect();
     let daily_returns: Vec<f64> = equities
         .windows(2)
         .map(|w| if w[0] > 0.0 { w[1] / w[0] - 1.0 } else { 0.0 })
         .collect();
 
-    // Build a date → SPY close map for benchmark returns.
-    let spy_map: HashMap<NaiveDate, f64> = spy_bars
-        .iter()
-        .map(|b| (b.ts.date_naive(), b.close))
-        .collect();
-    let bench_returns: Vec<f64> = equity_curve
+    let bench_equities: Vec<f64> = bench_equity_curve.iter().map(|(_, e)| *e).collect();
+    let bench_returns: Vec<f64> = bench_equities
         .windows(2)
-        .map(|w| {
-            let d0 = w[0].0.date_naive();
-            let d1 = w[1].0.date_naive();
-            match (spy_map.get(&d0), spy_map.get(&d1)) {
-                (Some(&c0), Some(&c1)) if c0 > 0.0 => c1 / c0 - 1.0,
-                _ => 0.0,
-            }
-        })
+        .map(|w| if w[0] > 0.0 { w[1] / w[0] - 1.0 } else { 0.0 })
         .collect();
 
     let final_equity = equities.last().copied().unwrap_or(initial_capital);
@@ -330,10 +318,6 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
         }
     }
 
-    let spy_bars = fetch_bars(pool, "SPY", run.start_date, run.end_date)
-        .await
-        .unwrap_or_default();
-
     // ── Execute strategy ──────────────────────────────────────────────────
     let config = RunConfig {
         run_id,
@@ -353,12 +337,56 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
         result.equity_curve.len()
     );
 
-    // ── Persist equity snapshots ──────────────────────────────────────────
-    let spy_map: HashMap<NaiveDate, f64> = spy_bars
+    // ── Build buy-and-hold benchmark from actual traded symbols ─────────
+    // Equal-weight buy-and-hold: split capital across traded symbols,
+    // track mark-to-market as if we bought at the first bar and held.
+    let traded_symbols: Vec<&str> = bars_by_symbol.keys().map(|s| s.as_str()).collect();
+    let n_traded = traded_symbols.len().max(1) as f64;
+    let capital_per_sym = run.initial_capital / n_traded;
+
+    // For each traded symbol, record first-bar price for normalisation
+    let first_prices: HashMap<&str, f64> = traded_symbols
         .iter()
-        .map(|b| (b.ts.date_naive(), b.close))
+        .filter_map(|&sym| {
+            bars_by_symbol
+                .get(sym)
+                .and_then(|bars| bars.first())
+                .map(|b| (sym, b.close))
+        })
         .collect();
-    let spy_first = spy_bars.first().map(|b| b.close).unwrap_or(1.0);
+
+    // Aggregate buy-and-hold equity by timestamp across all symbols
+    let mut bench_map: HashMap<i64, f64> = HashMap::new();
+    for &sym in &traded_symbols {
+        let bars = match bars_by_symbol.get(sym) {
+            Some(b) => b,
+            None => continue,
+        };
+        let first_price = match first_prices.get(sym) {
+            Some(&p) if p > 0.0 => p,
+            _ => continue,
+        };
+        for bar in bars {
+            let bh_equity = capital_per_sym * (bar.close / first_price);
+            *bench_map.entry(bar.ts.timestamp()).or_insert(0.0) += bh_equity;
+        }
+    }
+
+    let mut bench_ts_sorted: Vec<i64> = bench_map.keys().copied().collect();
+    bench_ts_sorted.sort_unstable();
+    let bench_equity_curve: Vec<(DateTime<Utc>, f64)> = bench_ts_sorted
+        .iter()
+        .map(|&ts| {
+            let dt = DateTime::from_timestamp(ts, 0).unwrap_or_default();
+            (dt, bench_map[&ts])
+        })
+        .collect();
+
+    // Build a fast lookup from date → bench equity for snapshot persistence
+    let bench_by_date: HashMap<NaiveDate, f64> = bench_equity_curve
+        .iter()
+        .map(|(dt, eq)| (dt.date_naive(), *eq))
+        .collect();
 
     let mut peak_equity = run.initial_capital;
     for (ts, equity) in &result.equity_curve {
@@ -370,15 +398,10 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
         } else {
             0.0
         };
-        let spy_close = spy_map
+        let bench_eq = bench_by_date
             .get(&ts.date_naive())
             .copied()
-            .unwrap_or(spy_first);
-        let bench_eq = if spy_first > 0.0 {
-            run.initial_capital * (spy_close / spy_first)
-        } else {
-            run.initial_capital
-        };
+            .unwrap_or(run.initial_capital);
 
         sqlx::query(
             r#"
@@ -436,7 +459,7 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
             run.initial_capital,
             &result.equity_curve,
             &result.trades,
-            &spy_bars,
+            &bench_equity_curve,
         );
         sqlx::query(
             r#"

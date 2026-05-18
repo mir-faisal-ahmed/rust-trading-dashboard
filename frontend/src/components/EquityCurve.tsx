@@ -71,7 +71,7 @@ export function EquityCurve({ equity, drawdown, strategyName }: EquityCurveProps
               labelStyle={{ color: "#a3a3a3" }}
               formatter={(value: unknown, name: unknown) => [
                 `$${Number(value).toLocaleString()}`,
-                name === "equity" ? "Strategy" : "Benchmark",
+                name === "equity" ? "Strategy" : "Buy & Hold",
               ]}
             />
             <Legend
@@ -90,10 +90,10 @@ export function EquityCurve({ equity, drawdown, strategyName }: EquityCurveProps
             <Line
               type="monotone"
               dataKey="benchmark"
-              stroke="#525252"
-              strokeWidth={1}
+              stroke="#3b82f6"
+              strokeWidth={1.5}
               dot={false}
-              name="Benchmark (SPY)"
+              name="Buy & Hold (Actual Price)"
               strokeDasharray="4 2"
             />
           </LineChart>
