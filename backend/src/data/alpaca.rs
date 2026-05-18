@@ -71,7 +71,7 @@ impl AlpacaClient {
 
         loop {
             let mut url = format!(
-                "{}/v2/stocks/{}/bars?timeframe={}&start={}&end={}&limit=10000&adjustment=all&feed=sip",
+                "{}/v2/stocks/{}/bars?timeframe={}&start={}&end={}&limit=10000&adjustment=all&feed=iex",
                 self.data_url, symbol, timeframe, start, end
             );
             if let Some(ref token) = page_token {
