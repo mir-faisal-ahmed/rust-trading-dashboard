@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package finrl;
+
+service FinRLService {
+  // Get portfolio weights from RL model
+  rpc PredictWeights(PredictRequest) returns (PredictResponse);
+
+  // Load a specific model checkpoint
+  rpc LoadModel(LoadModelRequest) returns (LoadModelResponse);
+
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message PredictRequest {
+  string model_id = 1;          // e.g., "ppo_v1", "sac_v2"
+  repeated double features = 2;  // Flattened feature vector
+  repeated string symbols = 3;   // Symbol order for weight mapping
+}
+
+message PredictResponse {
+  map<string, double> weights = 1;  // symbol -> weight
+  double inference_time_ms = 2;
+}
+
+message LoadModelRequest {
+  string model_id = 1;
+  string checkpoint_path = 2;
+}
+
+message LoadModelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string version = 2;
+  repeated string loaded_models = 3;
+}
