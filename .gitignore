@@ -49,9 +49,9 @@ temp_*/
 *.bak
 
 # ML Models (large files)
+models/
 *.pt
 *.pth
 *.h5
 *.pkl
 *.joblib
-models/*.zip
