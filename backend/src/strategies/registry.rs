@@ -3,20 +3,17 @@ use sqlx::PgPool;
 use super::*;
 use xgboost_classifier::XGBoostClassifier;
 use rl_market_maker::RLMarketMaker;
-
-
-// use temporal_attention_transformer::TemporalAttentionTransformer;
-// use multi_factor_alpha::MultiFactorAlpha;
-// use kalman_pairs::KalmanPairs;
-// use adaptive_trend_following::AdaptiveTrendFollowing;
-
+use finrl_grpc::FinRLGrpcStrategy;
 
 /// Returns every compiled strategy.
 pub fn all() -> Vec<Box<dyn TradingStrategy>> {
     vec![
         Box::new(XGBoostClassifier::new()),
         Box::new(RLMarketMaker::new()),
-        // Future strategies: Box::new(MomentumStrategy::new()), ...
+        Box::new(FinRLGrpcStrategy::ppo()),
+        Box::new(FinRLGrpcStrategy::sac()),
+        Box::new(FinRLGrpcStrategy::a2c()),
+        Box::new(FinRLGrpcStrategy::td3()),
     ]
 }
 

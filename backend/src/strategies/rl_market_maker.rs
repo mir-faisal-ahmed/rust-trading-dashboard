@@ -283,6 +283,7 @@ impl TradingStrategy for RLMarketMaker {
         Ok(StrategyResult {
             trades: all_trades,
             equity_curve,
+            predicted_equity: None,
         })
     }
 }

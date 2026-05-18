@@ -80,7 +80,7 @@ pub fn rsi(closes: &[f64], period: usize) -> Vec<f64> {
     result
 }
 
-/// MACD — returns (macd_line, signal_line, histogram).
+/// MACD -- returns (macd_line, signal_line, histogram).
 pub fn macd(
     closes: &[f64],
     fast: usize,
@@ -106,7 +106,7 @@ pub fn macd(
     (macd_line, signal_line, histogram)
 }
 
-/// Bollinger Bands — returns (upper, middle, lower, pct_b).
+/// Bollinger Bands -- returns (upper, middle, lower, pct_b).
 pub fn bollinger_bands(
     closes: &[f64],
     period: usize,

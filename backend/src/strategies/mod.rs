@@ -2,6 +2,7 @@ pub mod indicators;
 pub mod registry;
 pub mod xgboost_classifier;
 pub mod rl_market_maker;
+pub mod finrl_grpc;
 
 use uuid::Uuid;
 
@@ -44,13 +45,15 @@ pub struct RawTrade {
 /// Output produced by a strategy run.
 pub struct StrategyResult {
     pub trades: Vec<RawTrade>,
-    /// (timestamp, total_portfolio_equity) — one entry per trading bar.
+    /// (timestamp, total_portfolio_equity) -- one entry per trading bar.
     pub equity_curve: Vec<(chrono::DateTime<chrono::Utc>, f64)>,
+    /// Model's intended portfolio value with zero rebalance threshold (FinRL only).
+    pub predicted_equity: Option<Vec<(chrono::DateTime<chrono::Utc>, f64)>>,
 }
 
 /// Compile-time metadata describing a strategy implementation.
 pub struct StrategyMeta {
-    /// Stable code identifier — never changes after the strategy ships.
+    /// Stable code identifier -- never changes after the strategy ships.
     pub code_key: &'static str,
     pub name: &'static str,
     pub strategy_type: &'static str,

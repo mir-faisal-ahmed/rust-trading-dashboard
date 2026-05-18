@@ -478,6 +478,7 @@ impl TradingStrategy for XGBoostClassifier {
         Ok(StrategyResult {
             trades: all_trades,
             equity_curve,
+            predicted_equity: None,
         })
     }
 }
