@@ -18,7 +18,6 @@ interface EquityCurveProps {
   strategyName: string;
 }
 
-// downsample to keep chart snappy
 function downsample<T>(data: T[], maxPoints: number): T[] {
   if (data.length <= maxPoints) return data;
   const step = Math.ceil(data.length / maxPoints);
@@ -26,21 +25,22 @@ function downsample<T>(data: T[], maxPoints: number): T[] {
 }
 
 function formatCurrency(val: number): string {
-  if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`;
-  if (val >= 1000) return `${(val / 1000).toFixed(0)}K`;
-  return val.toFixed(0);
+  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
+  if (val >= 1_000)     return `${Math.round(val / 1_000)}K`;
+  return Math.round(val).toString();
 }
 
 export function EquityCurve({ equity, drawdown, strategyName }: EquityCurveProps) {
-  const sampledEquity = downsample(equity, 250);
+  const sampledEquity   = downsample(equity, 250);
   const sampledDrawdown = downsample(drawdown, 250);
+  const hasPredicted    = sampledEquity.some((p) => p.predicted != null);
 
   return (
     <div className="border border-neutral-700 bg-neutral-950 font-mono text-xs">
       <div className="px-3 py-1.5 border-b border-neutral-700 text-amber-500 font-bold uppercase flex justify-between">
-        <span>Equity Curve - {strategyName}</span>
+        <span>Equity Curve -- {strategyName}</span>
         <span className="text-neutral-500 font-normal">
-          {equity.length > 0 && `${equity[0].timestamp} to ${equity[equity.length - 1].timestamp}`}
+          {equity.length > 0 && `${equity[0].timestamp} → ${equity[equity.length - 1].timestamp}`}
         </span>
       </div>
 
@@ -59,6 +59,7 @@ export function EquityCurve({ equity, drawdown, strategyName }: EquityCurveProps
               tickLine={{ stroke: "#404040" }}
               axisLine={{ stroke: "#404040" }}
               tickFormatter={formatCurrency}
+              width={52}
             />
             <Tooltip
               contentStyle={{
@@ -69,15 +70,16 @@ export function EquityCurve({ equity, drawdown, strategyName }: EquityCurveProps
                 fontFamily: "monospace",
               }}
               labelStyle={{ color: "#a3a3a3" }}
-              formatter={(value: unknown, name: unknown) => [
-                `$${Number(value).toLocaleString()}`,
-                name === "equity" ? "Strategy" : "Buy & Hold",
-              ]}
+              formatter={(value: unknown, name: unknown) => {
+                const v = Math.round(Number(value)).toLocaleString();
+                const label =
+                  name === "equity"    ? "Strategy" :
+                  name === "predicted" ? "Model Prediction" :
+                  "Buy & Hold";
+                return [`$${v}`, label];
+              }}
             />
-            <Legend
-              wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }}
-              iconType="plainline"
-            />
+            <Legend wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }} iconType="plainline" />
             <ReferenceLine y={100000} stroke="#404040" strokeDasharray="3 3" />
             <Line
               type="monotone"
@@ -87,13 +89,24 @@ export function EquityCurve({ equity, drawdown, strategyName }: EquityCurveProps
               dot={false}
               name="Strategy"
             />
+            {hasPredicted && (
+              <Line
+                type="monotone"
+                dataKey="predicted"
+                stroke="#10b981"
+                strokeWidth={1.5}
+                dot={false}
+                name="Model Prediction"
+                strokeDasharray="6 2"
+              />
+            )}
             <Line
               type="monotone"
               dataKey="benchmark"
               stroke="#3b82f6"
               strokeWidth={1.5}
               dot={false}
-              name="Buy & Hold (Actual Price)"
+              name="Buy & Hold"
               strokeDasharray="4 2"
             />
           </LineChart>
@@ -117,7 +130,8 @@ export function EquityCurve({ equity, drawdown, strategyName }: EquityCurveProps
               tick={{ fill: "#525252", fontSize: 10 }}
               tickLine={{ stroke: "#404040" }}
               axisLine={{ stroke: "#404040" }}
-              tickFormatter={(v: number) => `${v}%`}
+              tickFormatter={(v: number) => `${v.toFixed(1)}%`}
+              width={52}
             />
             <Tooltip
               contentStyle={{
@@ -127,7 +141,7 @@ export function EquityCurve({ equity, drawdown, strategyName }: EquityCurveProps
                 fontSize: 11,
                 fontFamily: "monospace",
               }}
-              formatter={(value: unknown) => [`${value}%`, "Drawdown"]}
+              formatter={(value: unknown) => [`${Number(value).toFixed(2)}%`, "Drawdown"]}
             />
             <ReferenceLine y={0} stroke="#404040" />
             <Area

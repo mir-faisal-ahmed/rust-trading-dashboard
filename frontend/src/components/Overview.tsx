@@ -11,9 +11,14 @@ function StatBlock({ label, value, color }: { label: string; value: string; colo
   return (
     <div className="border border-neutral-700 bg-neutral-950 px-3 py-2">
       <div className="text-neutral-500 uppercase text-[10px] tracking-wider">{label}</div>
-      <div className={`text-lg font-bold font-mono ${color ?? "text-neutral-200"}`}>{value}</div>
+      <div className={`text-lg font-bold font-mono truncate ${color ?? "text-neutral-200"}`}>{value}</div>
     </div>
   );
+}
+
+function fmt(v: number | undefined | null, decimals = 2): string {
+  if (v == null || !isFinite(v)) return "--";
+  return v.toFixed(decimals);
 }
 
 export function Overview({ strategies, runs, onSelectRun, onRunBenchmark }: OverviewProps) {
@@ -31,9 +36,9 @@ export function Overview({ strategies, runs, onSelectRun, onRunBenchmark }: Over
   const best  = sortedBySharpe[0] ?? null;
   const worst = sortedBySharpe[sortedBySharpe.length - 1] ?? null;
 
-  function avg(fn: (r: BenchmarkRun) => number): string {
-    if (completed.length === 0) return "N/A";
-    return (completed.reduce((s, r) => s + fn(r), 0) / completed.length).toFixed(2);
+  function avg(fn: (r: BenchmarkRun) => number): number | null {
+    if (completed.length === 0) return null;
+    return completed.reduce((s, r) => s + fn(r), 0) / completed.length;
   }
 
   const avgSharpe = avg((r) => r.metrics?.sharpe_ratio ?? 0);
@@ -41,33 +46,32 @@ export function Overview({ strategies, runs, onSelectRun, onRunBenchmark }: Over
   const avgMaxDD  = avg((r) => r.metrics?.max_drawdown_pct ?? 0);
   const avgVol    = avg((r) => r.metrics?.volatility_ann_pct ?? 0);
   const worstDD   = completed.length > 0
-    ? Math.min(...completed.map((r) => r.metrics?.max_drawdown_pct ?? 0)).toFixed(2)
-    : "N/A";
+    ? Math.min(...completed.map((r) => r.metrics?.max_drawdown_pct ?? 0))
+    : null;
 
   const typeCounts: Record<string, number> = {};
   strategies.forEach((s) => { typeCounts[s.type] = (typeCounts[s.type] ?? 0) + 1; });
 
   return (
     <div className="space-y-3 font-mono text-xs">
-      {/* top stats */}
       <div className="grid grid-cols-6 gap-2">
         <StatBlock label="Total Strategies" value={String(strategies.length)} />
         <StatBlock label="Completed Runs"   value={String(completed.length)} />
         <StatBlock label="Running"          value={String(runningCount)} color={runningCount > 0 ? "text-blue-400" : undefined} />
         <StatBlock label="Failed"           value={String(failedCount)}  color={failedCount > 0  ? "text-red-400"  : undefined} />
-        <StatBlock label="Avg Sharpe"       value={avgSharpe}  color={Number(avgSharpe) > 1  ? "text-green-400" : undefined} />
-        <StatBlock label="Avg Return"       value={`${avgReturn}%`} color={Number(avgReturn) > 0 ? "text-green-400" : "text-red-400"} />
+        <StatBlock label="Avg Sharpe"       value={avgSharpe != null ? fmt(avgSharpe, 3) : "N/A"}  color={(avgSharpe ?? 0) > 1 ? "text-green-400" : undefined} />
+        <StatBlock label="Avg Return"       value={avgReturn != null ? `${fmt(avgReturn)}%` : "N/A"} color={(avgReturn ?? 0) > 0 ? "text-green-400" : "text-red-400"} />
       </div>
 
       <div className="grid grid-cols-3 gap-2">
         {best && (
           <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 cursor-pointer hover:border-green-800" onClick={() => onSelectRun(best)}>
             <div className="text-neutral-500 uppercase text-[10px] mb-1">Best Performer (Sharpe)</div>
-            <div className="text-green-400 font-bold">{best.strategy_name}</div>
-            <div className="grid grid-cols-3 gap-2 mt-2 text-neutral-400">
-              <div><span className="text-neutral-600">sharpe </span><span className="text-green-400">{best.metrics?.sharpe_ratio ?? "—"}</span></div>
-              <div><span className="text-neutral-600">ret </span><span className="text-green-400">{best.metrics?.total_return_pct ?? "—"}%</span></div>
-              <div><span className="text-neutral-600">dd </span><span className="text-red-400">{best.metrics?.max_drawdown_pct ?? "—"}%</span></div>
+            <div className="text-green-400 font-bold truncate">{best.strategy_name}</div>
+            <div className="grid grid-cols-3 gap-1 mt-2 text-neutral-400">
+              <div><span className="text-neutral-600">sharpe </span><span className="text-green-400">{fmt(best.metrics?.sharpe_ratio, 3)}</span></div>
+              <div><span className="text-neutral-600">ret </span><span className="text-green-400">{fmt(best.metrics?.total_return_pct)}%</span></div>
+              <div><span className="text-neutral-600">dd </span><span className="text-red-400">{fmt(best.metrics?.max_drawdown_pct)}%</span></div>
             </div>
           </div>
         )}
@@ -75,16 +79,16 @@ export function Overview({ strategies, runs, onSelectRun, onRunBenchmark }: Over
         {worst && worst.id !== best?.id && (
           <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 cursor-pointer hover:border-red-800" onClick={() => onSelectRun(worst)}>
             <div className="text-neutral-500 uppercase text-[10px] mb-1">Worst Performer (Sharpe)</div>
-            <div className="text-red-400 font-bold">{worst.strategy_name}</div>
-            <div className="grid grid-cols-3 gap-2 mt-2 text-neutral-400">
-              <div><span className="text-neutral-600">sharpe </span><span className="text-red-400">{worst.metrics?.sharpe_ratio ?? "—"}</span></div>
+            <div className="text-red-400 font-bold truncate">{worst.strategy_name}</div>
+            <div className="grid grid-cols-3 gap-1 mt-2 text-neutral-400">
+              <div><span className="text-neutral-600">sharpe </span><span className="text-red-400">{fmt(worst.metrics?.sharpe_ratio, 3)}</span></div>
               <div>
                 <span className="text-neutral-600">ret </span>
                 <span className={(worst.metrics?.total_return_pct ?? 0) > 0 ? "text-green-400" : "text-red-400"}>
-                  {worst.metrics?.total_return_pct ?? "—"}%
+                  {fmt(worst.metrics?.total_return_pct)}%
                 </span>
               </div>
-              <div><span className="text-neutral-600">dd </span><span className="text-red-400">{worst.metrics?.max_drawdown_pct ?? "—"}%</span></div>
+              <div><span className="text-neutral-600">dd </span><span className="text-red-400">{fmt(worst.metrics?.max_drawdown_pct)}%</span></div>
             </div>
           </div>
         )}
@@ -92,31 +96,29 @@ export function Overview({ strategies, runs, onSelectRun, onRunBenchmark }: Over
         <div className="border border-neutral-700 bg-neutral-950 px-3 py-2">
           <div className="text-neutral-500 uppercase text-[10px] mb-1">Portfolio Risk Summary</div>
           <div className="space-y-1 mt-2">
-            <div className="flex justify-between"><span className="text-neutral-500">Avg Max DD</span><span className="text-red-400">{avgMaxDD}%</span></div>
-            <div className="flex justify-between"><span className="text-neutral-500">Worst DD</span><span className="text-red-400">{worstDD}%</span></div>
-            <div className="flex justify-between"><span className="text-neutral-500">Avg Vol</span><span className="text-neutral-300">{avgVol}%</span></div>
+            <div className="flex justify-between"><span className="text-neutral-500">Avg Max DD</span><span className="text-red-400">{fmt(avgMaxDD)}%</span></div>
+            <div className="flex justify-between"><span className="text-neutral-500">Worst DD</span><span className="text-red-400">{fmt(worstDD)}%</span></div>
+            <div className="flex justify-between"><span className="text-neutral-500">Avg Vol</span><span className="text-neutral-300">{fmt(avgVol)}%</span></div>
           </div>
         </div>
       </div>
 
-      {/* type distribution */}
       <div className="border border-neutral-700 bg-neutral-950 px-3 py-2">
         <div className="text-amber-500 font-bold uppercase mb-2">Strategy Distribution</div>
-        <div className="grid grid-cols-5 gap-2">
+        <div className="flex flex-wrap gap-x-6 gap-y-1">
           {Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
-            <div key={type} className="flex justify-between border-b border-neutral-800 py-1">
-              <span className="text-neutral-400">{type.replace("_", " ")}</span>
+            <div key={type} className="flex gap-2">
+              <span className="text-neutral-400">{type.replace(/_/g, " ")}</span>
               <span className="text-neutral-200">{count}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* leaderboard */}
       {completed.length > 0 ? (
         <div className="border border-neutral-700 bg-neutral-950">
           <div className="px-3 py-1.5 border-b border-neutral-700 text-amber-500 font-bold uppercase">
-            Leaderboard — Total Return
+            Leaderboard -- Total Return
           </div>
           <table className="w-full">
             <thead>
@@ -139,15 +141,15 @@ export function Overview({ strategies, runs, onSelectRun, onRunBenchmark }: Over
                     <td className="px-2 py-1 text-neutral-500">{i + 1}</td>
                     <td className="px-2 py-1 text-neutral-200">{run.strategy_name}</td>
                     <td className={`px-2 py-1 text-right ${(m?.total_return_pct ?? 0) > 0 ? "text-green-400" : "text-red-400"}`}>
-                      {m ? `${m.total_return_pct > 0 ? "+" : ""}${m.total_return_pct}%` : "—"}
+                      {m ? `${m.total_return_pct > 0 ? "+" : ""}${fmt(m.total_return_pct)}%` : "--"}
                     </td>
                     <td className={`px-2 py-1 text-right ${(m?.sharpe_ratio ?? 0) > 1 ? "text-green-400" : "text-neutral-300"}`}>
-                      {m?.sharpe_ratio ?? "—"}
+                      {fmt(m?.sharpe_ratio, 3)}
                     </td>
-                    <td className="px-2 py-1 text-right text-red-400">{m ? `${m.max_drawdown_pct}%` : "—"}</td>
-                    <td className="px-2 py-1 text-right text-neutral-300">{m ? `${m.win_rate_pct}%` : "—"}</td>
-                    <td className="px-2 py-1 text-right text-neutral-300">{m?.profit_factor ?? "—"}</td>
-                    <td className="px-2 py-1 text-right text-neutral-400">{m?.total_trades ?? "—"}</td>
+                    <td className="px-2 py-1 text-right text-red-400">{m ? `${fmt(m.max_drawdown_pct)}%` : "--"}</td>
+                    <td className="px-2 py-1 text-right text-neutral-300">{m ? `${fmt(m.win_rate_pct)}%` : "--"}</td>
+                    <td className="px-2 py-1 text-right text-neutral-300">{fmt(m?.profit_factor, 3)}</td>
+                    <td className="px-2 py-1 text-right text-neutral-400">{m?.total_trades ?? "--"}</td>
                   </tr>
                 );
               })}

@@ -69,7 +69,7 @@ export function StrategyTable({ runs, onSelect, selectedId }: StrategyTableProps
   }
 
   function fmt(val: number | null | undefined, suffix = ""): string {
-    return val != null ? `${val}${suffix}` : "—";
+    return val != null ? `${val}${suffix}` : "--";
   }
 
   return (
@@ -111,10 +111,10 @@ export function StrategyTable({ runs, onSelect, selectedId }: StrategyTableProps
                 <td className="px-2 py-1.5 text-neutral-200 font-medium">{run.strategy_name}</td>
                 <td className={`px-2 py-1.5 ${statusColor(run.status)}`}>{run.status}</td>
                 <td className={`px-2 py-1.5 ${pnlColor(m?.total_return_pct ?? 0)}`}>
-                  {m ? `${m.total_return_pct > 0 ? "+" : ""}${m.total_return_pct}` : "—"}
+                  {m ? `${m.total_return_pct > 0 ? "+" : ""}${m.total_return_pct}` : "--"}
                 </td>
                 <td className={`px-2 py-1.5 ${pnlColor(m?.annualized_return_pct ?? 0)}`}>
-                  {m ? `${m.annualized_return_pct > 0 ? "+" : ""}${m.annualized_return_pct}` : "—"}
+                  {m ? `${m.annualized_return_pct > 0 ? "+" : ""}${m.annualized_return_pct}` : "--"}
                 </td>
                 <td className={`px-2 py-1.5 ${(m?.sharpe_ratio ?? 0) > 1 ? "text-green-400" : (m?.sharpe_ratio ?? 0) < 0 ? "text-red-400" : "text-neutral-300"}`}>
                   {fmt(m?.sharpe_ratio)}
@@ -127,7 +127,7 @@ export function StrategyTable({ runs, onSelect, selectedId }: StrategyTableProps
                 <td className="px-2 py-1.5 text-neutral-300">{fmt(m?.profit_factor)}</td>
                 <td className="px-2 py-1.5 text-neutral-400">{fmt(m?.total_trades)}</td>
                 <td className="px-2 py-1.5 text-neutral-400">{fmt(m?.volatility_ann_pct, "%")}</td>
-                <td className="px-2 py-1.5 text-neutral-500">{run.duration_ms ?? "—"}</td>
+                <td className="px-2 py-1.5 text-neutral-500">{run.duration_ms ?? "--"}</td>
               </tr>
             );
           })}

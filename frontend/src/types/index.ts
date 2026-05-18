@@ -9,6 +9,7 @@ export type StrategyType =
   | "lstm_forecast"
   | "transformer"
   | "reinforcement_learning"
+  | "rl_portfolio_optimization"
   | "market_making"
   | "trend_following";
 
@@ -77,6 +78,7 @@ export interface EquityPoint {
   timestamp: string;
   equity: number;
   benchmark: number;
+  predicted?: number;
 }
 
 export interface DrawdownPoint {
@@ -100,7 +102,7 @@ export interface Trade {
   slippage: number;
 }
 
-export type ViewMode = "overview" | "benchmarks" | "comparison" | "trades" | "config" | "live";
+export type ViewMode = "overview" | "benchmarks" | "comparison" | "trades" | "training" | "config" | "live";
 
 export interface MarketBar {
   t: string;

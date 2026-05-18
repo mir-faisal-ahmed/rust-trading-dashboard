@@ -10,6 +10,7 @@ import { TradeLog } from "./components/TradeLog";
 import { ComparisonView } from "./components/ComparisonView";
 import { ConfigView } from "./components/ConfigView";
 import { LiveView } from "./components/LiveView";
+import { TrainingView } from "./components/TrainingView";
 
 export default function App() {
   const [view, setView] = useState<ViewMode>("overview");
@@ -39,8 +40,9 @@ export default function App() {
         F2: "benchmarks",
         F3: "comparison",
         F4: "trades",
-        F5: "config",
-        F6: "live",
+        F5: "training",
+        F6: "config",
+        F7: "live",
       };
       if (keyMap[e.key]) {
         e.preventDefault();
@@ -144,7 +146,7 @@ export default function App() {
                     <div className="border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-xs text-neutral-500 flex items-center justify-center">
                       {selectedRun.status === "running" || selectedRun.status === "queued"
                         ? `run is ${selectedRun.status}…`
-                        : "metrics not available — run not completed"}
+                        : "metrics not available -- run not completed"}
                     </div>
                   )}
                   <div className="space-y-3">
@@ -157,7 +159,7 @@ export default function App() {
                           ["Run ID", selectedRun.id.slice(0, 8) + "…"],
                           ["Strategy", selectedRun.strategy_name],
                           ["Period", `${selectedRun.start_date} → ${selectedRun.end_date}`],
-                          ["Duration", selectedRun.duration_ms ? `${selectedRun.duration_ms}ms` : "—"],
+                          ["Duration", selectedRun.duration_ms ? `${selectedRun.duration_ms}ms` : "--"],
                           ["Status", selectedRun.status],
                           ["Started", selectedRun.started_at.replace("T", " ").slice(0, 19)],
                         ].map(([k, v]) => (
@@ -259,6 +261,9 @@ export default function App() {
       case "trades":
         return <TradeLog trades={allTrades} />;
 
+      case "training":
+        return <TrainingView />;
+
       case "config":
         return <ConfigView strategies={strategies} />;
 
@@ -311,7 +316,7 @@ export default function App() {
               onClick={handleOpenRunPanel}
               className="border border-amber-600 text-amber-400 hover:bg-amber-900/30 px-2 py-0.5 uppercase tracking-wider"
             >
-              [RUN]
+              RUN
             </button>
           </div>
         </div>
@@ -336,7 +341,7 @@ export default function App() {
                   }
                   className="bg-neutral-800 border border-neutral-600 text-neutral-200 px-2 py-1 font-mono text-xs focus:outline-none focus:border-amber-500"
                 >
-                  <option value="">— select —</option>
+                  <option value="">-- select --</option>
                   {strategies.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}

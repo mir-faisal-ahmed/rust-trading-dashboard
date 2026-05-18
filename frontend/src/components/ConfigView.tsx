@@ -1,10 +1,31 @@
+import { useEffect, useState } from "react";
 import type { Strategy } from "../types";
 
 interface ConfigViewProps {
   strategies: Strategy[];
 }
 
+interface DataSourceStatus {
+  name: string;
+  configured: boolean;
+  feed?: string;
+  endpoint?: string;
+}
+
 export function ConfigView({ strategies }: ConfigViewProps) {
+  const [sources, setSources] = useState<DataSourceStatus[]>([]);
+
+  const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080/api/v1";
+  const backendUrl = BASE.replace("/api/v1", "");
+  const wsUrl = backendUrl.replace(/^http/, "ws") + "/ws";
+
+  useEffect(() => {
+    fetch(`${BASE}/config/status`)
+      .then((r) => r.json())
+      .then((data) => setSources(data.data_sources ?? []))
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="space-y-3 font-mono text-xs">
       <div className="border border-neutral-700 bg-neutral-950 px-3 py-2">
@@ -14,32 +35,18 @@ export function ConfigView({ strategies }: ConfigViewProps) {
             <label className="text-neutral-500 block mb-1">Backend URL</label>
             <input
               type="text"
-              defaultValue="http://localhost:8080"
+              defaultValue={backendUrl}
               className="w-full bg-neutral-900 border border-neutral-600 px-2 py-1.5 text-neutral-200 focus:border-amber-500 focus:outline-none"
+              readOnly
             />
           </div>
           <div>
             <label className="text-neutral-500 block mb-1">WebSocket URL</label>
             <input
               type="text"
-              defaultValue="ws://localhost:8080/ws"
+              defaultValue={wsUrl}
               className="w-full bg-neutral-900 border border-neutral-600 px-2 py-1.5 text-neutral-200 focus:border-amber-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="text-neutral-500 block mb-1">Database Host</label>
-            <input
-              type="text"
-              defaultValue="localhost:5432"
-              className="w-full bg-neutral-900 border border-neutral-600 px-2 py-1.5 text-neutral-200 focus:border-amber-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="text-neutral-500 block mb-1">Database Name</label>
-            <input
-              type="text"
-              defaultValue="stratbench"
-              className="w-full bg-neutral-900 border border-neutral-600 px-2 py-1.5 text-neutral-200 focus:border-amber-500 focus:outline-none"
+              readOnly
             />
           </div>
         </div>
@@ -105,19 +112,15 @@ export function ConfigView({ strategies }: ConfigViewProps) {
         <table className="w-full">
           <thead>
             <tr className="border-b border-neutral-700 text-neutral-500">
-              <th className="px-2 py-1 text-left font-normal">ID</th>
               <th className="px-2 py-1 text-left font-normal">NAME</th>
               <th className="px-2 py-1 text-left font-normal">TYPE</th>
               <th className="px-2 py-1 text-left font-normal">ASSET</th>
               <th className="px-2 py-1 text-left font-normal">STATUS</th>
-              <th className="px-2 py-1 text-left font-normal">PARAMETERS</th>
-              <th className="px-2 py-1 text-left font-normal">CREATED</th>
             </tr>
           </thead>
           <tbody>
             {strategies.map((s) => (
               <tr key={s.id} className="border-b border-neutral-800 hover:bg-neutral-900">
-                <td className="px-2 py-1 text-neutral-500">{s.id}</td>
                 <td className="px-2 py-1 text-neutral-200">{s.name}</td>
                 <td className="px-2 py-1 text-neutral-400">{s.type}</td>
                 <td className="px-2 py-1 text-neutral-400">{s.asset_class}</td>
@@ -125,15 +128,10 @@ export function ConfigView({ strategies }: ConfigViewProps) {
                   s.status === "completed" ? "text-green-400" :
                   s.status === "running" ? "text-blue-400" :
                   s.status === "failed" ? "text-red-400" :
-                  s.status === "queued" ? "text-yellow-500" :
                   "text-neutral-500"
                 }`}>
                   {s.status}
                 </td>
-                <td className="px-2 py-1 text-neutral-500 max-w-xs truncate">
-                  {Object.entries(s.parameters).map(([k, v]) => `${k}=${v}`).join(", ")}
-                </td>
-                <td className="px-2 py-1 text-neutral-500">{s.created_at.slice(0, 10)}</td>
               </tr>
             ))}
           </tbody>
@@ -143,26 +141,16 @@ export function ConfigView({ strategies }: ConfigViewProps) {
       <div className="border border-neutral-700 bg-neutral-950 px-3 py-2">
         <div className="text-amber-500 font-bold uppercase mb-3">Data Sources</div>
         <div className="space-y-2 text-neutral-400">
-          <div className="flex justify-between border-b border-neutral-800 py-1">
-            <span>Polygon.io</span>
-            <span className="text-green-400">configured</span>
-          </div>
-          <div className="flex justify-between border-b border-neutral-800 py-1">
-            <span>Databento</span>
-            <span className="text-green-400">configured</span>
-          </div>
-          <div className="flex justify-between border-b border-neutral-800 py-1">
-            <span>Alpaca Markets</span>
-            <span className="text-green-400">configured</span>
-          </div>
-          <div className="flex justify-between border-b border-neutral-800 py-1">
-            <span>Binance</span>
-            <span className="text-neutral-500">not configured</span>
-          </div>
-          <div className="flex justify-between border-b border-neutral-800 py-1">
-            <span>Interactive Brokers</span>
-            <span className="text-neutral-500">not configured</span>
-          </div>
+          {sources.length > 0 ? sources.map((src) => (
+            <div key={src.name} className="flex justify-between border-b border-neutral-800 py-1">
+              <span>{src.name}{src.feed ? ` (${src.feed})` : ""}</span>
+              <span className={src.configured ? "text-green-400" : "text-neutral-500"}>
+                {src.configured ? "configured" : "not configured"}
+              </span>
+            </div>
+          )) : (
+            <div className="text-neutral-500">loading...</div>
+          )}
         </div>
       </div>
     </div>

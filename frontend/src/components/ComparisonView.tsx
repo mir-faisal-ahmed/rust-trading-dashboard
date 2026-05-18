@@ -161,7 +161,7 @@ export function ComparisonView({ runs }: ComparisonViewProps) {
                       const val = (run.metrics?.[key as keyof typeof run.metrics] as number) ?? 0;
                       return (
                         <td key={run.id} className={`px-2 py-1 text-right ${run.metrics ? cellColor(key, val, values) : "text-neutral-600"}`}>
-                          {run.metrics ? val : "—"}
+                          {run.metrics ? (isFinite(val) ? val.toFixed(3) : "--") : "--"}
                         </td>
                       );
                     })}

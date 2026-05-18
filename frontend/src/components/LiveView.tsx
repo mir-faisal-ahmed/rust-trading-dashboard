@@ -407,14 +407,14 @@ export function LiveView() {
         {/* Bottom info bar */}
         <div className="px-3 py-1 border-t border-neutral-700 flex justify-between text-neutral-500">
           <span>
-            {candles.length > 0 && `${candles[0].date} — ${candles[candles.length - 1].date}`}
+            {candles.length > 0 && `${candles[0].date} -- ${candles[candles.length - 1].date}`}
           </span>
           <span>{candles.length} bars</span>
-          <span>Vol: {lastBar ? formatVolume(lastBar.volume) : "—"}</span>
+          <span>Vol: {lastBar ? formatVolume(lastBar.volume) : "--"}</span>
         </div>
       </div>
 
-      {/* Right sidebar — Watchlist */}
+      {/* Right sidebar -- Watchlist */}
       <div className="w-64 border border-neutral-700 bg-neutral-950 flex flex-col shrink-0">
         <div className="px-3 py-2 border-b border-neutral-700 flex items-center justify-between">
           <span className="text-amber-500 font-bold uppercase">Watchlist</span>
@@ -450,7 +450,7 @@ export function LiveView() {
                   >
                     <span className="flex-1 text-neutral-200 text-left">{item.symbol}</span>
                     <span className="w-16 text-right text-neutral-300">
-                      {item.last > 0 ? formatPrice(item.last) : "—"}
+                      {item.last > 0 ? formatPrice(item.last) : "--"}
                     </span>
                     <span
                       className={`w-14 text-right ${
@@ -463,7 +463,7 @@ export function LiveView() {
                     >
                       {item.last > 0
                         ? `${item.change >= 0 ? "+" : ""}${item.change.toFixed(2)}`
-                        : "—"}
+                        : "--"}
                     </span>
                     <span
                       className={`w-16 text-right ${
@@ -476,7 +476,7 @@ export function LiveView() {
                     >
                       {item.last > 0
                         ? `${item.changePct >= 0 ? "+" : ""}${item.changePct.toFixed(2)}%`
-                        : "—"}
+                        : "--"}
                     </span>
                   </button>
                 ))}

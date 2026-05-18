@@ -86,6 +86,7 @@ function mapRun(raw: any): BenchmarkRun {
     timestamp: (s.timestamp as string).slice(0, 10),
     equity: s.equity as number,
     benchmark: s.benchmark_equity as number,
+    predicted: s.predicted_equity != null ? (s.predicted_equity as number) : undefined,
   }));
 
   const drawdown_curve: DrawdownPoint[] = snapshots.map((s) => ({
