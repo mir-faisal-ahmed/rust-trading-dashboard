@@ -1,6 +1,7 @@
 pub mod indicators;
 pub mod registry;
 pub mod xgboost_classifier;
+pub mod rl_market_maker;
 
 use uuid::Uuid;
 
