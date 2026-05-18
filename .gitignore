@@ -6,11 +6,52 @@ Cargo.lock
 # Environment files
 .env
 .env.*
+**/.venv
+**/venv/
+**/.python-version
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Node.js dependencies (frontend)
 frontend/node_modules/
 frontend/dist/
 frontend/.parcel-cache/
+node_modules/
 
 # Logs
 *.log
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+temp_*/
+*.tmp
+*.bak
+
+# ML Models (large files)
+*.pt
+*.pth
+*.h5
+*.pkl
+*.joblib
+models/*.zip

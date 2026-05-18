@@ -1,0 +1,10 @@
+# Exclude large dirs from the backend Docker build context (repo root)
+frontend/node_modules
+frontend/dist
+backend/target
+python/.venv
+python/finrl
+models
+temp_finrl
+.git
+*.md
