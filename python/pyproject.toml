@@ -1,0 +1,12 @@
+[project]
+name = "trading-dashboard-finrl"
+version = "0.1.0"
+description = "FinRL integration for Rust trading dashboard"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

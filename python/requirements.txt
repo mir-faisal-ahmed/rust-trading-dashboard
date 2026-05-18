@@ -1,0 +1,28 @@
+# Core ML
+torch>=2.0.0
+stable-baselines3>=2.0.0
+gymnasium>=1.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# FinRL
+finrl>=0.3.7
+
+# Data
+yfinance>=0.2.0
+
+# gRPC
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+protobuf>=4.25.0
+
+# ONNX
+onnx>=1.15.0
+onnxruntime>=1.16.0
+
+# Caching (optional, for Redis-backed inference cache)
+redis>=5.0.0
+hiredis>=2.3.0
+
+# Utilities
+loguru>=0.7.0

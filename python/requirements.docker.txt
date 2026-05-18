@@ -1,0 +1,21 @@
+# Runtime requirements for the finrl-service container.
+
+# gRPC
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+protobuf>=4.25.0
+
+# ONNX Runtime (fast CPU inference)
+onnxruntime>=1.16.0
+numpy>=1.24.0
+
+# SB3 for training and .zip model loading
+stable-baselines3>=2.0.0
+torch>=2.0.0
+
+# Database access for training (uses data from stratbench DB)
+psycopg2-binary>=2.9.0
+pandas>=2.0.0
+
+# Utilities
+loguru>=0.7.0

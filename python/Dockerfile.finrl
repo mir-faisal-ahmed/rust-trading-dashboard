@@ -1,0 +1,33 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y build-essential git libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.docker.txt .
+RUN pip install --no-cache-dir -r requirements.docker.txt
+
+# Copy application code
+COPY . .
+
+# Compile protobuf stubs into services/
+RUN python -m grpc_tools.protoc \
+    -I./protos \
+    --python_out=./services \
+    --grpc_python_out=./services \
+    ./protos/finrl_service.proto
+
+# Models are mounted at runtime via volume: ./models:/models
+RUN mkdir -p /models
+
+ENV PYTHONPATH=/app
+ENV MODELS_DIR=/models
+ENV FINRL_GRPC_PORT=50051
+ENV TRAINING_HTTP_PORT=50052
+
+EXPOSE 50051 50052
+
+# Run both gRPC server and training HTTP server
+CMD ["sh", "-c", "python services/training_server.py & python services/finrl_server.py"]
