@@ -102,7 +102,7 @@ pub async fn query_bars(
     let timeframe = params.timeframe.as_deref().unwrap_or("1Day");
     let limit = params.limit.unwrap_or(500);
 
-    let rows = sqlx::query_as::<_, (chrono::DateTime<chrono::Utc>, f64, f64, f64, f64, i64)>(
+    let rows = sqlx::query_as::<_, (chrono::DateTime<chrono::Utc>, f64, f64, f64, f64, f64)>(
         r#"SELECT ts, open, high, low, close, volume
            FROM market_bars
            WHERE symbol = $1
