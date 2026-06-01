@@ -1,7 +1,8 @@
+pub mod dual_momentum;
 pub mod indicators;
+pub mod risk_parity_rotation;
 pub mod registry;
-pub mod xgboost_classifier;
-pub mod rl_market_maker;
+pub mod trend_breakout;
 pub mod finrl_grpc;
 
 use uuid::Uuid;

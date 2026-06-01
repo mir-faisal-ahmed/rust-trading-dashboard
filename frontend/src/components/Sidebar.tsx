@@ -12,9 +12,11 @@ const navItems: { key: ViewMode; label: string; shortcut: string }[] = [
   { key: "benchmarks", label: "BENCHMARKS", shortcut: "F2" },
   { key: "comparison", label: "COMPARE", shortcut: "F3" },
   { key: "trades", label: "TRADE LOG", shortcut: "F4" },
-  { key: "training", label: "TRAINING", shortcut: "F5" },
-  { key: "config", label: "CONFIG", shortcut: "F6" },
-  { key: "live", label: "LIVE", shortcut: "F7" },
+  { key: "backtesting", label: "BACKTEST", shortcut: "F5" },
+  { key: "training", label: "TRAINING", shortcut: "F6" },
+  { key: "live", label: "LIVE CHART", shortcut: "F7" },
+  { key: "paper-trading", label: "PAPER TRADE", shortcut: "F8" },
+  { key: "config", label: "CONFIG", shortcut: "F9" },
 ];
 
 export function Sidebar({ currentView, onViewChange, strategyCount, runningCount }: SidebarProps) {

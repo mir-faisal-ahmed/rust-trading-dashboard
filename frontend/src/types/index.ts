@@ -102,7 +102,7 @@ export interface Trade {
   slippage: number;
 }
 
-export type ViewMode = "overview" | "benchmarks" | "comparison" | "trades" | "training" | "config" | "live";
+export type ViewMode = "overview" | "benchmarks" | "comparison" | "trades" | "training" | "config" | "live" | "paper-trading" | "backtesting";
 
 export interface MarketBar {
   t: string;

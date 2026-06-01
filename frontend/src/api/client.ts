@@ -156,7 +156,7 @@ export const api = {
     }) => post<{ id: string; status: string }>("/benchmarks", body),
   },
   marketData: {
-    status: () => get<unknown>("/market-data/status"),
+    status: () => get<MarketDataStatus>("/market-data/status"),
     fetch: (body: {
       symbol: string;
       timeframe: string;
@@ -176,4 +176,189 @@ export const api = {
       );
     },
   },
+  // ── Paper Trading API ──
+  trading: {
+    getAccount: () => get<PaperAccount>("/trading/account"),
+    getPositions: () => get<PaperPosition[]>("/trading/positions"),
+    closePosition: (symbol: string, body?: { qty?: string; percentage?: string }) =>
+      fetch(`${BASE}/trading/positions/${encodeURIComponent(symbol)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      }).then((r) => r.json()),
+    closeAllPositions: () =>
+      fetch(`${BASE}/trading/positions`, { method: "DELETE" }).then((r) => r.json()),
+    submitOrder: (order: OrderRequest) => post<PaperOrder>("/trading/orders", order),
+    getOrders: (status?: string, limit?: number) => {
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (limit) params.set("limit", String(limit));
+      const qs = params.toString();
+      return get<PaperOrder[]>(`/trading/orders${qs ? `?${qs}` : ""}`);
+    },
+    cancelOrder: (id: string) =>
+      fetch(`${BASE}/trading/orders/${id}`, { method: "DELETE" }).then((r) => r.json()),
+    cancelAllOrders: () =>
+      fetch(`${BASE}/trading/orders`, { method: "DELETE" }).then((r) => r.json()),
+    getPortfolioHistory: (period?: string, timeframe?: string) => {
+      const params = new URLSearchParams();
+      if (period) params.set("period", period);
+      if (timeframe) params.set("timeframe", timeframe);
+      const qs = params.toString();
+      return get<PortfolioHistory>(`/trading/portfolio-history${qs ? `?${qs}` : ""}`);
+    },
+    getActivities: (limit?: number) => {
+      const params = new URLSearchParams();
+      if (limit) params.set("limit", String(limit));
+      return get<PaperActivity[]>(`/trading/activities?${params.toString()}`);
+    },
+    sync: () => post<PaperTradingState>("/trading/sync", {}),
+  },
+  // ── Advanced Backtesting API ──
+  backtest: {
+    walkForward: (body: {
+      strategy_id: string;
+      start_date: string;
+      end_date: string;
+      train_window_days: number;
+      test_window_days: number;
+      initial_capital?: number;
+    }) => post<WalkForwardResponse>("/backtest/walk-forward", body),
+    batch: (body: {
+      strategy_ids: string[];
+      start_date: string;
+      end_date: string;
+      initial_capital?: number;
+    }) => post<BatchBacktestResponse>("/backtest/batch", body),
+    optimize: (body: {
+      strategy_id: string;
+      start_date: string;
+      end_date: string;
+      param_grid: Record<string, unknown[]>;
+      optimize_metric?: string;
+    }) => post<ParamOptimizeResponse>("/backtest/optimize", body),
+  },
 };
+
+// ── Paper Trading Types ──
+
+export interface PaperAccount {
+  id: string;
+  account_number: string;
+  status: string;
+  currency: string;
+  buying_power: string;
+  cash: string;
+  portfolio_value: string;
+  equity: string;
+  last_equity: string;
+  long_market_value: string;
+  short_market_value: string;
+  initial_margin: string;
+  maintenance_margin: string;
+  daytrade_count: number;
+  pattern_day_trader: boolean;
+}
+
+export interface PaperPosition {
+  asset_id: string;
+  symbol: string;
+  exchange: string;
+  asset_class: string;
+  qty: string;
+  side: string;
+  market_value: string;
+  cost_basis: string;
+  unrealized_pl: string;
+  unrealized_plpc: string;
+  current_price: string;
+  lastday_price: string;
+  change_today: string;
+  avg_entry_price: string;
+}
+
+export interface PaperOrder {
+  id: string;
+  client_order_id: string;
+  created_at: string;
+  symbol: string;
+  qty: string | null;
+  notional: string | null;
+  filled_qty: string;
+  filled_avg_price: string | null;
+  order_type: string;
+  side: string;
+  time_in_force: string;
+  limit_price: string | null;
+  stop_price: string | null;
+  status: string;
+}
+
+export interface OrderRequest {
+  symbol: string;
+  qty?: string;
+  notional?: string;
+  side: "buy" | "sell";
+  type: "market" | "limit" | "stop" | "stop_limit" | "trailing_stop";
+  time_in_force: "day" | "gtc" | "ioc" | "fok";
+  limit_price?: string;
+  stop_price?: string;
+  trail_percent?: string;
+  extended_hours?: boolean;
+}
+
+export interface PortfolioHistory {
+  timestamp: number[];
+  equity: number[];
+  profit_loss: number[];
+  profit_loss_pct: number[];
+  base_value: number;
+  timeframe: string;
+}
+
+export interface PaperActivity {
+  id: string;
+  activity_type: string;
+  symbol?: string;
+  side?: string;
+  qty?: string;
+  price?: string;
+  transaction_time?: string;
+}
+
+export interface PaperTradingState {
+  connected: boolean;
+  account: PaperAccount | null;
+  positions: PaperPosition[];
+  open_orders: PaperOrder[];
+  last_sync: string | null;
+}
+
+export interface WalkForwardResponse {
+  windows: { window_index: number; train_start: string; train_end: string; test_start: string; test_end: string; run_id: string }[];
+  total_runs: number;
+  message: string;
+}
+
+export interface BatchBacktestResponse {
+  runs: { strategy_id: string; run_id: string; status: string }[];
+  total: number;
+}
+
+export interface ParamOptimizeResponse {
+  runs: { run_id: string; parameters: Record<string, unknown> }[];
+  total_combinations: number;
+  optimize_metric: string;
+  message: string;
+}
+
+export interface MarketDataStatus {
+  configured: boolean;
+  symbols: Array<{
+    symbol: string;
+    timeframe: string;
+    bar_count: number;
+    earliest: string | null;
+    latest: string | null;
+  }>;
+}

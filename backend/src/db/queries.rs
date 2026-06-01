@@ -5,8 +5,16 @@ use super::models::*;
 
 // -- strategies --
 
-pub async fn list_strategies(pool: &PgPool) -> Result<Vec<Strategy>, sqlx::Error> {
-    sqlx::query_as::<_, Strategy>("SELECT * FROM strategies ORDER BY created_at DESC")
+pub async fn list_strategies(pool: &PgPool, include_inactive: bool) -> Result<Vec<Strategy>, sqlx::Error> {
+    sqlx::query_as::<_, Strategy>(
+        r#"
+        SELECT *
+        FROM strategies
+        WHERE ($1 OR is_active = TRUE)
+        ORDER BY created_at DESC
+        "#,
+    )
+        .bind(include_inactive)
         .fetch_all(pool)
         .await
 }
@@ -20,8 +28,8 @@ pub async fn get_strategy(pool: &PgPool, id: Uuid) -> Result<Option<Strategy>, s
 
 pub async fn create_strategy(pool: &PgPool, input: &CreateStrategy) -> Result<Strategy, sqlx::Error> {
     sqlx::query_as::<_, Strategy>(
-        r#"INSERT INTO strategies (id, name, strategy_type, asset_class, status, description, parameters)
-           VALUES ($1, $2, $3, $4, 'idle', $5, $6)
+        r#"INSERT INTO strategies (id, name, strategy_type, asset_class, status, is_active, description, parameters)
+           VALUES ($1, $2, $3, $4, 'idle', TRUE, $5, $6)
            RETURNING *"#,
     )
     .bind(Uuid::new_v4())
@@ -40,7 +48,7 @@ pub async fn update_strategy_status(
     status: &str,
 ) -> Result<Strategy, sqlx::Error> {
     sqlx::query_as::<_, Strategy>(
-        "UPDATE strategies SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *",
+        "UPDATE strategies SET status = $2, updated_at = NOW() WHERE id = $1 AND is_active = TRUE RETURNING *",
     )
     .bind(id)
     .bind(status)
@@ -48,8 +56,49 @@ pub async fn update_strategy_status(
     .await
 }
 
+pub async fn get_runnable_strategy(pool: &PgPool, id: Uuid) -> Result<Option<Strategy>, sqlx::Error> {
+    sqlx::query_as::<_, Strategy>(
+        r#"
+        SELECT *
+        FROM strategies
+        WHERE id = $1
+          AND is_active = TRUE
+          AND code_key IS NOT NULL
+          AND status <> 'retired'
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn strategy_has_active_runs(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
+    let row: (i64,) = sqlx::query_as(
+        r#"
+        SELECT COUNT(*)
+        FROM benchmark_runs
+        WHERE strategy_id = $1
+          AND status IN ('queued', 'running')
+        "#,
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0 > 0)
+}
+
 pub async fn delete_strategy(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query("DELETE FROM strategies WHERE id = $1")
+    let result = sqlx::query(
+        r#"
+        UPDATE strategies
+        SET is_active = FALSE,
+            status = 'retired',
+            retired_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+          AND is_active = TRUE
+        "#,
+    )
         .bind(id)
         .execute(pool)
         .await?;

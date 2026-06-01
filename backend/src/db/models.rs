@@ -11,6 +11,8 @@ pub struct Strategy {
     pub strategy_type: String,
     pub asset_class: String,
     pub status: String,
+    pub is_active: bool,
+    pub retired_at: Option<DateTime<Utc>>,
     pub description: String,
     pub parameters: serde_json::Value,
     pub created_at: DateTime<Utc>,

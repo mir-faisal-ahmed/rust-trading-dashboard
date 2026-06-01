@@ -11,6 +11,8 @@ import { ComparisonView } from "./components/ComparisonView";
 import { ConfigView } from "./components/ConfigView";
 import { LiveView } from "./components/LiveView";
 import { TrainingView } from "./components/TrainingView";
+import { PaperTradingPanel } from "./components/PaperTradingPanel";
+import { BacktestingPanel } from "./components/BacktestingPanel";
 
 export default function App() {
   const [view, setView] = useState<ViewMode>("overview");
@@ -25,7 +27,7 @@ export default function App() {
   const [runError, setRunError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const { strategies, runs, loading, refreshing, error, runBenchmark } =
+  const { strategies, runs, loading, refreshing, error, runBenchmark, reload } =
     useAppData();
 
   const runningCount = strategies.filter((s) => s.status === "running").length;
@@ -40,9 +42,11 @@ export default function App() {
         F2: "benchmarks",
         F3: "comparison",
         F4: "trades",
-        F5: "training",
-        F6: "config",
+        F5: "backtesting",
+        F6: "training",
         F7: "live",
+        F8: "paper-trading",
+        F9: "config",
       };
       if (keyMap[e.key]) {
         e.preventDefault();
@@ -269,6 +273,21 @@ export default function App() {
 
       case "live":
         return <LiveView />;
+
+      case "paper-trading":
+        return <PaperTradingPanel />;
+
+      case "backtesting":
+        return (
+          <div className="space-y-4">
+            <BacktestingPanel strategies={strategies} onRunComplete={reload} />
+            <StrategyTable
+              runs={runs}
+              onSelect={setSelectedRun}
+              selectedId={selectedRun?.id ?? null}
+            />
+          </div>
+        );
 
       default:
         return null;

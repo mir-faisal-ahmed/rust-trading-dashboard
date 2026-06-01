@@ -1,5 +1,7 @@
+pub mod backtesting;
 pub mod benchmarks;
 pub mod market_data;
+pub mod paper_trading;
 pub mod strategies;
 pub mod trades;
 
@@ -62,6 +64,55 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .service(
                 web::resource("/market-data/{symbol}")
                     .route(web::get().to(market_data::query_bars)),
+            )
+            // ── Paper Trading endpoints ──
+            .service(
+                web::resource("/trading/account")
+                    .route(web::get().to(paper_trading::get_account)),
+            )
+            .service(
+                web::resource("/trading/positions")
+                    .route(web::get().to(paper_trading::get_positions))
+                    .route(web::delete().to(paper_trading::close_all_positions)),
+            )
+            .service(
+                web::resource("/trading/positions/{symbol}")
+                    .route(web::delete().to(paper_trading::close_position)),
+            )
+            .service(
+                web::resource("/trading/orders")
+                    .route(web::get().to(paper_trading::get_orders))
+                    .route(web::post().to(paper_trading::submit_order))
+                    .route(web::delete().to(paper_trading::cancel_all_orders)),
+            )
+            .service(
+                web::resource("/trading/orders/{id}")
+                    .route(web::delete().to(paper_trading::cancel_order)),
+            )
+            .service(
+                web::resource("/trading/portfolio-history")
+                    .route(web::get().to(paper_trading::get_portfolio_history)),
+            )
+            .service(
+                web::resource("/trading/activities")
+                    .route(web::get().to(paper_trading::get_activities)),
+            )
+            .service(
+                web::resource("/trading/sync")
+                    .route(web::post().to(paper_trading::sync_state)),
+            )
+            // ── Advanced Backtesting endpoints ──
+            .service(
+                web::resource("/backtest/walk-forward")
+                    .route(web::post().to(backtesting::walk_forward)),
+            )
+            .service(
+                web::resource("/backtest/batch")
+                    .route(web::post().to(backtesting::batch_backtest)),
+            )
+            .service(
+                web::resource("/backtest/optimize")
+                    .route(web::post().to(backtesting::param_optimize)),
             )
             .service(
                 web::resource("/config/status")

@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ComposedChart,
   Bar,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -12,6 +13,19 @@ import {
 import { api } from "../api/client";
 import type { MarketBar, WatchlistItem } from "../types";
 
+interface FundDefinition {
+  id: string;
+  name: string;
+  symbols: string[];
+}
+
+interface FundAnalytics {
+  points: number;
+  totalReturnPct: number;
+  annualizedVolPct: number;
+  maxDrawdownPct: number;
+}
+
 interface CandleData {
   date: string;
   open: number;
@@ -20,6 +34,11 @@ interface CandleData {
   close: number;
   volume: number;
   isUp: boolean;
+  sma20?: number;
+  sma50?: number;
+  ema9?: number;
+  bbUpper?: number;
+  bbLower?: number;
 }
 
 const TIMEFRAMES = [
@@ -42,6 +61,15 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [
   { symbol: "GOOGL", last: 0, change: 0, changePct: 0, category: "STOCKS" },
 ];
 
+const PRESET_FUNDS: FundDefinition[] = [
+  { id: "us_growth", name: "US Growth", symbols: ["QQQ", "XLK", "IWM", "SOXX"] },
+  { id: "balanced_core", name: "Balanced Core", symbols: ["SPY", "QQQ", "TLT", "GLD"] },
+  { id: "defensive_income", name: "Defensive Income", symbols: ["VIG", "XLU", "IEF", "SHY"] },
+  { id: "energy_macro", name: "Energy and Macro", symbols: ["XLE", "USO", "GLD", "DBC"] },
+];
+
+const CUSTOM_FUNDS_KEY = "liveview.customFunds.v1";
+
 function formatDate(iso: string): string {
   return iso.slice(0, 10);
 }
@@ -57,6 +85,31 @@ function formatVolume(val: number): string {
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
   if (val >= 1_000) return `${(val / 1_000).toFixed(0)}K`;
   return val.toFixed(0);
+}
+
+function movingAverage(values: number[], period: number): Array<number | undefined> {
+  const out: Array<number | undefined> = new Array(values.length).fill(undefined);
+  if (values.length < period) return out;
+  let sum = 0;
+  for (let i = 0; i < values.length; i += 1) {
+    sum += values[i];
+    if (i >= period) sum -= values[i - period];
+    if (i >= period - 1) out[i] = sum / period;
+  }
+  return out;
+}
+
+function exponentialMovingAverage(values: number[], period: number): Array<number | undefined> {
+  const out: Array<number | undefined> = new Array(values.length).fill(undefined);
+  if (values.length < period) return out;
+  const k = 2 / (period + 1);
+  const seed = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  out[period - 1] = seed;
+  for (let i = period; i < values.length; i += 1) {
+    const prev = out[i - 1] ?? values[i - 1];
+    out[i] = values[i] * k + prev * (1 - k);
+  }
+  return out;
 }
 
 // Custom candlestick shape
@@ -126,6 +179,72 @@ export function LiveView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>("");
+  const [showIndicators, setShowIndicators] = useState(true);
+  const [indicators, setIndicators] = useState({
+    sma20: true,
+    sma50: false,
+    ema9: false,
+    bollingerBands: false,
+  });
+  const [alerts, setAlerts] = useState<{ symbol: string; price: number; direction: "above" | "below"; id: string }[]>([]);
+  const [triggeredAlerts, setTriggeredAlerts] = useState<string[]>([]);
+  const [alertPrice, setAlertPrice] = useState("");
+  const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
+  const [selectedFundId, setSelectedFundId] = useState<string>("");
+  const [customFunds, setCustomFunds] = useState<FundDefinition[]>([]);
+  const [customFundName, setCustomFundName] = useState("");
+  const [customFundSymbols, setCustomFundSymbols] = useState("");
+  const [fundAnalytics, setFundAnalytics] = useState<FundAnalytics | null>(null);
+  const [fundAnalyticsLoading, setFundAnalyticsLoading] = useState(false);
+  const [fundAnalyticsError, setFundAnalyticsError] = useState<string | null>(null);
+
+  const allFunds = useMemo(() => [...PRESET_FUNDS, ...customFunds], [customFunds]);
+  const selectedFund = useMemo(
+    () => allFunds.find((f) => f.id === selectedFundId) ?? null,
+    [allFunds, selectedFundId]
+  );
+
+  const parseFundSymbols = useCallback((input: string): string[] => {
+    return input
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter((s) => s.length > 0)
+      .filter((value, index, arr) => arr.indexOf(value) === index);
+  }, []);
+
+  const computeAnalyticsFromSeries = useCallback((series: number[]): FundAnalytics | null => {
+    if (series.length < 2 || series[0] <= 0) return null;
+
+    const returns: number[] = [];
+    for (let i = 1; i < series.length; i += 1) {
+      const prev = series[i - 1];
+      const cur = series[i];
+      if (prev > 0) returns.push(cur / prev - 1);
+    }
+    if (returns.length === 0) return null;
+
+    const totalReturnPct = (series[series.length - 1] / series[0] - 1) * 100;
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((a, b) => a + (b - mean) ** 2, 0) / returns.length;
+    const dailyVol = Math.sqrt(variance);
+    const annualizedVolPct = dailyVol * Math.sqrt(252) * 100;
+
+    let peak = series[0];
+    let maxDrawdown = 0;
+    for (const value of series) {
+      if (value > peak) peak = value;
+      const drawdown = peak > 0 ? value / peak - 1 : 0;
+      if (drawdown < maxDrawdown) maxDrawdown = drawdown;
+    }
+
+    return {
+      points: series.length,
+      totalReturnPct,
+      annualizedVolPct,
+      maxDrawdownPct: maxDrawdown * 100,
+    };
+  }, []);
 
   const loadBars = useCallback(async (sym: string, tfIdx: number) => {
     setLoading(true);
@@ -182,9 +301,163 @@ export function LiveView() {
     }
   }, []);
 
+  const analyzeFund = useCallback(
+    async (fund: FundDefinition, tfIdx: number) => {
+      setFundAnalyticsLoading(true);
+      setFundAnalyticsError(null);
+      setFundAnalytics(null);
+
+      const tf = TIMEFRAMES[tfIdx];
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - tf.days);
+      const startStr = start.toISOString().slice(0, 10);
+      const endStr = end.toISOString().slice(0, 10);
+
+      try {
+        const responses = await Promise.all(
+          fund.symbols.map(async (sym) => {
+            let result = await api.marketData.getBars(sym, {
+              timeframe: tf.timeframe,
+              start: startStr,
+              end: endStr,
+              limit: 1000,
+            });
+
+            if (!result.bars || result.bars.length === 0) {
+              await api.marketData.fetch({
+                symbol: sym,
+                timeframe: tf.timeframe,
+                start: startStr,
+                end: endStr,
+                crypto: sym.includes("/"),
+              });
+              result = await api.marketData.getBars(sym, {
+                timeframe: tf.timeframe,
+                start: startStr,
+                end: endStr,
+                limit: 1000,
+              });
+            }
+            return { sym, bars: (result.bars ?? []) as MarketBar[] };
+          })
+        );
+
+        const valid = responses.filter((r) => r.bars.length >= 2);
+        if (valid.length === 0) {
+          setFundAnalyticsError("No fund data available for analysis");
+          return;
+        }
+
+        const shortest = valid.reduce((min, r) => Math.min(min, r.bars.length), Number.MAX_SAFE_INTEGER);
+        if (!Number.isFinite(shortest) || shortest < 2) {
+          setFundAnalyticsError("Insufficient bars for fund analysis");
+          return;
+        }
+
+        const normalizedSeriesBySymbol = valid.map((r) => {
+          const sliced = r.bars.slice(r.bars.length - shortest);
+          const base = sliced[0].c;
+          return sliced.map((b) => (base > 0 ? b.c / base : 1));
+        });
+
+        const portfolioSeries: number[] = [];
+        for (let i = 0; i < shortest; i += 1) {
+          const avg =
+            normalizedSeriesBySymbol.reduce((sum, series) => sum + series[i], 0) /
+            normalizedSeriesBySymbol.length;
+          portfolioSeries.push(avg);
+        }
+
+        const analytics = computeAnalyticsFromSeries(portfolioSeries);
+        if (!analytics) {
+          setFundAnalyticsError("Unable to compute analytics for selected fund");
+          return;
+        }
+        setFundAnalytics(analytics);
+      } catch (e) {
+        setFundAnalyticsError(e instanceof Error ? e.message : "Failed to analyze fund");
+      } finally {
+        setFundAnalyticsLoading(false);
+      }
+    },
+    [computeAnalyticsFromSeries]
+  );
+
+  const applyFundToView = useCallback(
+    async (fund: FundDefinition, tfIdx: number) => {
+      if (fund.symbols.length > 0) {
+        setSymbol(fund.symbols[0]);
+        setSymbolInput(fund.symbols[0]);
+      }
+      await analyzeFund(fund, tfIdx);
+    },
+    [analyzeFund]
+  );
+
   useEffect(() => {
     void loadBars(symbol, timeframeIdx);
   }, [symbol, timeframeIdx, loadBars]);
+
+  useEffect(() => {
+    async function loadAvailableSymbols() {
+      try {
+        const status = await api.marketData.status();
+        const fromStatus = status.symbols
+          .map((s) => s.symbol.trim().toUpperCase())
+          .filter((s) => s.length > 0);
+        const merged = Array.from(
+          new Set([...fromStatus, ...DEFAULT_WATCHLIST.map((w) => w.symbol), ...PRESET_FUNDS.flatMap((f) => f.symbols)])
+        ).sort();
+        setAvailableSymbols(merged);
+      } catch {
+        const fallback = Array.from(
+          new Set([...DEFAULT_WATCHLIST.map((w) => w.symbol), ...PRESET_FUNDS.flatMap((f) => f.symbols)])
+        ).sort();
+        setAvailableSymbols(fallback);
+      }
+    }
+    void loadAvailableSymbols();
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_FUNDS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as FundDefinition[];
+      if (Array.isArray(parsed)) {
+        const clean = parsed.filter((f) => f && f.id && f.name && Array.isArray(f.symbols));
+        setCustomFunds(clean);
+      }
+    } catch {
+      setCustomFunds([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(CUSTOM_FUNDS_KEY, JSON.stringify(customFunds));
+  }, [customFunds]);
+
+  const lastBar = candles.length > 0 ? candles[candles.length - 1] : null;
+  const firstBar = candles.length > 0 ? candles[0] : null;
+  const priceChange = lastBar && firstBar ? lastBar.close - firstBar.open : 0;
+  const priceChangePct = firstBar && firstBar.open > 0 ? (priceChange / firstBar.open) * 100 : 0;
+
+  useEffect(() => {
+    if (!lastBar) return;
+    const pending = alerts.filter(
+      (a) => a.symbol === symbol && !triggeredAlerts.includes(a.id)
+    );
+    if (pending.length === 0) return;
+
+    const newlyTriggered = pending
+      .filter((a) => (a.direction === "above" ? lastBar.close >= a.price : lastBar.close <= a.price))
+      .map((a) => a.id);
+
+    if (newlyTriggered.length > 0) {
+      setTriggeredAlerts((prev) => [...prev, ...newlyTriggered]);
+    }
+  }, [alerts, triggeredAlerts, symbol, lastBar]);
 
   // Load watchlist data
   useEffect(() => {
@@ -222,13 +495,45 @@ export function LiveView() {
     if (s) setSymbol(s);
   };
 
-  const lastBar = candles.length > 0 ? candles[candles.length - 1] : null;
-  const firstBar = candles.length > 0 ? candles[0] : null;
-  const priceChange = lastBar && firstBar ? lastBar.close - firstBar.open : 0;
-  const priceChangePct = firstBar && firstBar.open > 0 ? (priceChange / firstBar.open) * 100 : 0;
+  const handleCreateCustomFund = useCallback(() => {
+    const name = customFundName.trim();
+    const symbols = parseFundSymbols(customFundSymbols);
+    if (!name || symbols.length < 2) {
+      return;
+    }
+    const id = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
+    const fund: FundDefinition = { id, name, symbols };
+    setCustomFunds((prev) => [...prev, fund]);
+    setSelectedFundId(id);
+    setCustomFundName("");
+    setCustomFundSymbols("");
+    void applyFundToView(fund, timeframeIdx);
+  }, [applyFundToView, customFundName, customFundSymbols, parseFundSymbols, timeframeIdx]);
 
   const minPrice = candles.length > 0 ? Math.min(...candles.map((c) => c.low)) * 0.998 : 0;
   const maxPrice = candles.length > 0 ? Math.max(...candles.map((c) => c.high)) * 1.002 : 100;
+
+  const closes = candles.map((c) => c.close);
+  const sma20 = movingAverage(closes, 20);
+  const sma50 = movingAverage(closes, 50);
+  const ema9 = exponentialMovingAverage(closes, 9);
+  const bbMid = movingAverage(closes, 20);
+  const bbStd = closes.map((_, i) => {
+    if (i < 19) return undefined;
+    const window = closes.slice(i - 19, i + 1);
+    const mean = window.reduce((a, b) => a + b, 0) / window.length;
+    const variance = window.reduce((a, b) => a + (b - mean) * (b - mean), 0) / window.length;
+    return Math.sqrt(variance);
+  });
+
+  const chartData: CandleData[] = candles.map((c, i) => ({
+    ...c,
+    sma20: sma20[i],
+    sma50: sma50[i],
+    ema9: ema9[i],
+    bbUpper: bbMid[i] != null && bbStd[i] != null ? (bbMid[i] as number) + 2 * (bbStd[i] as number) : undefined,
+    bbLower: bbMid[i] != null && bbStd[i] != null ? (bbMid[i] as number) - 2 * (bbStd[i] as number) : undefined,
+  }));
 
   const categories = [...new Set(watchlist.map((w) => w.category))];
 
@@ -240,6 +545,20 @@ export function LiveView() {
         <div className="px-3 py-2 border-b border-neutral-700 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <form onSubmit={handleSymbolSubmit} className="flex items-center gap-2">
+              <select
+                value={symbol}
+                onChange={(e) => {
+                  setSymbol(e.target.value);
+                  setSymbolInput(e.target.value);
+                }}
+                className="bg-neutral-800 border border-neutral-600 px-2 py-1 text-neutral-200 w-28 focus:border-amber-500 focus:outline-none"
+              >
+                {availableSymbols.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
               <input
                 type="text"
                 value={symbolInput}
@@ -253,6 +572,25 @@ export function LiveView() {
               >
                 GO
               </button>
+              <select
+                value={selectedFundId}
+                onChange={(e) => {
+                  const nextFundId = e.target.value;
+                  setSelectedFundId(nextFundId);
+                  const fund = allFunds.find((f) => f.id === nextFundId);
+                  if (fund) {
+                    void applyFundToView(fund, timeframeIdx);
+                  }
+                }}
+                className="bg-neutral-800 border border-neutral-600 px-2 py-1 text-neutral-200 w-40 focus:border-amber-500 focus:outline-none"
+              >
+                <option value="">No Fund</option>
+                {allFunds.map((fund) => (
+                  <option key={fund.id} value={fund.id}>
+                    {fund.name}
+                  </option>
+                ))}
+              </select>
             </form>
             <span className="text-neutral-200 text-sm font-bold">{symbol}</span>
             {lastBar && (
@@ -298,6 +636,80 @@ export function LiveView() {
           <span className="text-neutral-600 ml-2">
             {TIMEFRAMES[timeframeIdx].timeframe}
           </span>
+          <span className="text-neutral-700 mx-2">|</span>
+          {/* Indicators toggle */}
+          <button
+            onClick={() => setShowIndicators(!showIndicators)}
+            className={`px-2 py-0.5 ${showIndicators ? "text-blue-400" : "text-neutral-500"}`}
+          >
+            Indicators
+          </button>
+          {showIndicators && (
+            <>
+              <button
+                onClick={() => setIndicators(p => ({ ...p, sma20: !p.sma20 }))}
+                className={`px-1.5 py-0.5 ${indicators.sma20 ? "text-yellow-400" : "text-neutral-600"}`}
+              >
+                SMA20
+              </button>
+              <button
+                onClick={() => setIndicators(p => ({ ...p, sma50: !p.sma50 }))}
+                className={`px-1.5 py-0.5 ${indicators.sma50 ? "text-purple-400" : "text-neutral-600"}`}
+              >
+                SMA50
+              </button>
+              <button
+                onClick={() => setIndicators(p => ({ ...p, ema9: !p.ema9 }))}
+                className={`px-1.5 py-0.5 ${indicators.ema9 ? "text-cyan-400" : "text-neutral-600"}`}
+              >
+                EMA9
+              </button>
+              <button
+                onClick={() => setIndicators(p => ({ ...p, bollingerBands: !p.bollingerBands }))}
+                className={`px-1.5 py-0.5 ${indicators.bollingerBands ? "text-pink-400" : "text-neutral-600"}`}
+              >
+                BB
+              </button>
+            </>
+          )}
+          <span className="text-neutral-700 mx-2">|</span>
+          {/* Price alert */}
+          <input
+            type="text"
+            value={alertPrice}
+            onChange={(e) => setAlertPrice(e.target.value)}
+            className="bg-neutral-800 border border-neutral-700 px-1.5 py-0.5 w-16 text-neutral-300 focus:border-amber-500 focus:outline-none"
+            placeholder="Alert $"
+          />
+          <select
+            value={alertDirection}
+            onChange={(e) => setAlertDirection(e.target.value as "above" | "below")}
+            className="bg-neutral-800 border border-neutral-700 px-1 py-0.5 text-neutral-400"
+          >
+            <option value="above">above</option>
+            <option value="below">below</option>
+          </select>
+          <button
+            onClick={() => {
+              if (alertPrice && !isNaN(parseFloat(alertPrice))) {
+                setAlerts(prev => [...prev, {
+                  symbol,
+                  price: parseFloat(alertPrice),
+                  direction: alertDirection,
+                  id: Math.random().toString(36).slice(2),
+                }]);
+                setAlertPrice("");
+              }
+            }}
+            className="px-1.5 py-0.5 text-amber-400 hover:text-amber-300"
+          >
+            +Alert
+          </button>
+          {alerts.filter(a => a.symbol === symbol).length > 0 && (
+            <span className="text-amber-500 ml-1">
+              ({alerts.filter(a => a.symbol === symbol).length} alerts)
+            </span>
+          )}
         </div>
 
         {/* Chart */}
@@ -315,7 +727,7 @@ export function LiveView() {
             <div className="flex-1 min-h-0" style={{ minHeight: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
-                  data={candles}
+                  data={chartData}
                   margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
                 >
                   <XAxis
@@ -363,13 +775,28 @@ export function LiveView() {
                     shape={<CandlestickShape />}
                     isAnimationActive={false}
                   >
-                    {candles.map((entry, index) => (
+                    {chartData.map((entry, index) => (
                       <Cell
                         key={index}
                         fill={entry.isUp ? "#22c55e" : "#ef4444"}
                       />
                     ))}
                   </Bar>
+                  {showIndicators && indicators.sma20 && (
+                    <Line type="monotone" dataKey="sma20" dot={false} stroke="#facc15" strokeWidth={1.2} />
+                  )}
+                  {showIndicators && indicators.sma50 && (
+                    <Line type="monotone" dataKey="sma50" dot={false} stroke="#a855f7" strokeWidth={1.2} />
+                  )}
+                  {showIndicators && indicators.ema9 && (
+                    <Line type="monotone" dataKey="ema9" dot={false} stroke="#22d3ee" strokeWidth={1.2} />
+                  )}
+                  {showIndicators && indicators.bollingerBands && (
+                    <>
+                      <Line type="monotone" dataKey="bbUpper" dot={false} stroke="#f472b6" strokeWidth={1} strokeDasharray="4 2" />
+                      <Line type="monotone" dataKey="bbLower" dot={false} stroke="#f472b6" strokeWidth={1} strokeDasharray="4 2" />
+                    </>
+                  )}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -378,7 +805,7 @@ export function LiveView() {
             <div style={{ height: 80 }} className="border-t border-neutral-800">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
-                  data={candles}
+                  data={chartData}
                   margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
                 >
                   <XAxis dataKey="date" hide />
@@ -391,7 +818,7 @@ export function LiveView() {
                     width={50}
                   />
                   <Bar dataKey="volume" isAnimationActive={false}>
-                    {candles.map((entry, index) => (
+                    {chartData.map((entry, index) => (
                       <Cell
                         key={index}
                         fill={entry.isUp ? "#22c55e40" : "#ef444440"}
@@ -411,13 +838,72 @@ export function LiveView() {
           </span>
           <span>{candles.length} bars</span>
           <span>Vol: {lastBar ? formatVolume(lastBar.volume) : "--"}</span>
+          <span className={triggeredAlerts.some((id) => alerts.find((a) => a.id === id && a.symbol === symbol)) ? "text-amber-400" : "text-neutral-500"}>
+            Alerts: {alerts.filter((a) => a.symbol === symbol).length} / Triggered: {triggeredAlerts.filter((id) => alerts.find((a) => a.id === id && a.symbol === symbol)).length}
+          </span>
         </div>
       </div>
 
       {/* Right sidebar -- Watchlist */}
-      <div className="w-64 border border-neutral-700 bg-neutral-950 flex flex-col shrink-0">
+      <div className="w-72 border border-neutral-700 bg-neutral-950 flex flex-col shrink-0">
         <div className="px-3 py-2 border-b border-neutral-700 flex items-center justify-between">
           <span className="text-amber-500 font-bold uppercase">Watchlist</span>
+        </div>
+
+        <div className="px-3 py-2 border-b border-neutral-800 space-y-1">
+          <div className="text-neutral-400 uppercase text-[10px]">Create Custom Fund</div>
+          <input
+            type="text"
+            value={customFundName}
+            onChange={(e) => setCustomFundName(e.target.value)}
+            className="w-full bg-neutral-800 border border-neutral-700 px-2 py-1 text-neutral-200 focus:border-amber-500 focus:outline-none"
+            placeholder="Fund name"
+          />
+          <input
+            type="text"
+            value={customFundSymbols}
+            onChange={(e) => setCustomFundSymbols(e.target.value.toUpperCase())}
+            className="w-full bg-neutral-800 border border-neutral-700 px-2 py-1 text-neutral-200 focus:border-amber-500 focus:outline-none"
+            placeholder="Symbols: SPY,QQQ,TLT"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCreateCustomFund}
+              className="px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/30"
+            >
+              Save Fund
+            </button>
+            {selectedFund && (
+              <button
+                onClick={() => void analyzeFund(selectedFund, timeframeIdx)}
+                className="px-2 py-1 border border-neutral-600 text-neutral-300 hover:text-neutral-100"
+              >
+                Analyze
+              </button>
+            )}
+          </div>
+          {selectedFund && (
+            <div className="text-neutral-500 text-[10px]">
+              {selectedFund.symbols.join(" - ")}
+            </div>
+          )}
+          {fundAnalyticsLoading && <div className="text-blue-400">Analyzing fund...</div>}
+          {fundAnalyticsError && <div className="text-red-400">{fundAnalyticsError}</div>}
+          {fundAnalytics && (
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
+              <span className="text-neutral-500">Bars</span>
+              <span className="text-right text-neutral-300">{fundAnalytics.points}</span>
+              <span className="text-neutral-500">Return</span>
+              <span className={`text-right ${fundAnalytics.totalReturnPct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {fundAnalytics.totalReturnPct >= 0 ? "+" : ""}
+                {fundAnalytics.totalReturnPct.toFixed(2)}%
+              </span>
+              <span className="text-neutral-500">Ann Vol</span>
+              <span className="text-right text-neutral-300">{fundAnalytics.annualizedVolPct.toFixed(2)}%</span>
+              <span className="text-neutral-500">Max DD</span>
+              <span className="text-right text-red-300">{fundAnalytics.maxDrawdownPct.toFixed(2)}%</span>
+            </div>
+          )}
         </div>
 
         {/* Header row */}

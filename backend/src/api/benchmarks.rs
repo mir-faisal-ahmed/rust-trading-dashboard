@@ -70,10 +70,11 @@ pub async fn create(
 ) -> HttpResponse {
     let input = body.into_inner();
 
-    match queries::get_strategy(pool.get_ref(), input.strategy_id).await {
+    let strategy = match queries::get_runnable_strategy(pool.get_ref(), input.strategy_id).await {
+        Ok(Some(s)) => s,
         Ok(None) => {
             return HttpResponse::NotFound().json(serde_json::json!({
-                "error": "strategy not found"
+                "error": "strategy not found or not runnable"
             }));
         }
         Err(e) => {
@@ -82,7 +83,14 @@ pub async fn create(
                 "error": "failed to verify strategy"
             }));
         }
-        Ok(Some(_)) => {}
+    };
+
+    if let Some(code_key) = strategy.code_key.as_deref() {
+        if crate::strategies::registry::get(code_key).is_none() {
+            return HttpResponse::Conflict().json(serde_json::json!({
+                "error": "strategy implementation is not available in this build"
+            }));
+        }
     }
 
     match queries::create_benchmark_run(pool.get_ref(), &input).await {

@@ -4,8 +4,14 @@ use uuid::Uuid;
 
 use crate::db::{models::CreateStrategy, queries};
 
-pub async fn list(pool: web::Data<PgPool>) -> HttpResponse {
-    match queries::list_strategies(pool.get_ref()).await {
+#[derive(serde::Deserialize)]
+pub struct ListQuery {
+    #[serde(default)]
+    pub include_inactive: bool,
+}
+
+pub async fn list(pool: web::Data<PgPool>, q: web::Query<ListQuery>) -> HttpResponse {
+    match queries::list_strategies(pool.get_ref(), q.include_inactive).await {
         Ok(strategies) => HttpResponse::Ok().json(strategies),
         Err(e) => {
             tracing::error!("failed to list strategies: {}", e);
@@ -71,6 +77,22 @@ pub async fn update_status(
 
 pub async fn delete(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> HttpResponse {
     let id = path.into_inner();
+
+    match queries::strategy_has_active_runs(pool.get_ref(), id).await {
+        Ok(true) => {
+            return HttpResponse::Conflict().json(serde_json::json!({
+                "error": "strategy has queued/running benchmark runs"
+            }));
+        }
+        Ok(false) => {}
+        Err(e) => {
+            tracing::error!("failed to check strategy active runs {}: {}", id, e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "failed to validate strategy deletion"
+            }));
+        }
+    }
+
     match queries::delete_strategy(pool.get_ref(), id).await {
         Ok(rows) if rows > 0 => HttpResponse::NoContent().finish(),
         Ok(_) => HttpResponse::NotFound().json(serde_json::json!({

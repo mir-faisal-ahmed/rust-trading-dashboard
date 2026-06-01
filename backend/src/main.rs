@@ -12,6 +12,9 @@ mod grpc;
 mod strategies;
 mod ws;
 
+#[cfg(test)]
+mod tests;
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
@@ -58,6 +61,11 @@ async fn main() -> std::io::Result<()> {
         cfg.alpaca_api_secret.clone(),
         cfg.alpaca_data_url.clone(),
     ));
+    let paper_trading = web::Data::new(data::trading::PaperTradingClient::new(
+        cfg.alpaca_api_key.clone(),
+        cfg.alpaca_api_secret.clone(),
+        cfg.alpaca_base_url.clone(),
+    ));
     let pool_data = web::Data::new(pool);
     let engine_state = web::Data::new(engine::EngineState::new());
 
@@ -73,6 +81,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(pool_data.clone())
             .app_data(engine_state.clone())
             .app_data(alpaca_client.clone())
+            .app_data(paper_trading.clone())
             .configure(api::configure_routes)
             .route("/ws", web::get().to(ws::ws_handler))
     })

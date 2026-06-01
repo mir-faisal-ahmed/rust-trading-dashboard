@@ -10,6 +10,38 @@ use crate::data::alpaca::{self, AlpacaClient};
 use crate::db::models::PerformanceMetrics;
 use crate::strategies::{self, Bar, RunConfig};
 
+fn extract_symbols(parameters: &serde_json::Value) -> Vec<String> {
+    let mut symbols: Vec<String> = Vec::new();
+
+    let mut extend_from_array = |key: &str| {
+        if let Some(arr) = parameters.get(key).and_then(|v| v.as_array()) {
+            for value in arr {
+                if let Some(sym) = value.as_str() {
+                    let s = sym.trim().to_uppercase();
+                    if !s.is_empty() {
+                        symbols.push(s);
+                    }
+                }
+            }
+        }
+    };
+
+    extend_from_array("symbols");
+    extend_from_array("risk_on_symbols");
+    extend_from_array("defensive_symbols");
+
+    if let Some(cash_sym) = parameters.get("cash_symbol").and_then(|v| v.as_str()) {
+        let s = cash_sym.trim().to_uppercase();
+        if !s.is_empty() {
+            symbols.push(s);
+        }
+    }
+
+    symbols.sort();
+    symbols.dedup();
+    symbols
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // DB row for market bars (used internally by executor only).
 // ────────────────────────────────────────────────────────────────────────────
@@ -232,7 +264,7 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
     .ok_or_else(|| format!("run {} not found", run_id))?;
 
     let strategy = sqlx::query_as::<_, crate::db::models::Strategy>(
-        "SELECT * FROM strategies WHERE id = $1",
+        "SELECT * FROM strategies WHERE id = $1 AND is_active = TRUE",
     )
     .bind(run.strategy_id)
     .fetch_optional(pool)
@@ -257,12 +289,10 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
     );
 
     // ── Extract symbols early (needed for both auto-fetch and execution) ─
-    let symbols: Vec<String> = strategy.parameters["symbols"]
-        .as_array()
-        .ok_or("strategy.parameters.symbols is not an array")?
-        .iter()
-        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-        .collect();
+    let symbols = extract_symbols(&strategy.parameters);
+    if symbols.is_empty() {
+        return Err("strategy has no symbols configured".to_string());
+    }
 
     // ── Auto-fetch bars from Alpaca if not already in DB ───────────────
     if alpaca.is_configured() {
