@@ -169,7 +169,6 @@ impl TradingStrategy for TrendBreakout {
                     }
 
                     let stop = (bar.close - atr[i] * atr_mult).max(0.0);
-                    let risk_per_share = (bar.close - stop).max(0.01);
                     let capital_for_trade = cash * risk_fraction;
                     let qty = (capital_for_trade / (bar.close * (1.0 + slip))).floor();
                     if qty <= 0.0 {

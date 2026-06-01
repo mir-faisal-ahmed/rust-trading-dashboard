@@ -28,6 +28,14 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function del(path: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? `DELETE ${path} → ${res.status}`);
+  }
+}
+
 // ---- mappers: align backend field names with frontend types ----
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,10 +140,12 @@ function mapRun(raw: any): BenchmarkRun {
 
 export const api = {
   strategies: {
-    list: async (): Promise<Strategy[]> => {
-      const raw = await get<unknown[]>("/strategies");
+    list: async (opts?: { includeInactive?: boolean }): Promise<Strategy[]> => {
+      const query = opts?.includeInactive ? "?include_inactive=true" : "";
+      const raw = await get<unknown[]>(`/strategies${query}`);
       return raw.map(mapStrategy);
     },
+    retire: (id: string) => del(`/strategies/${id}`),
   },
   benchmarks: {
     listFull: async (): Promise<BenchmarkRun[]> => {

@@ -609,3 +609,46 @@ async fn run_inner(pool: &PgPool, run_id: Uuid, alpaca: &AlpacaClient) -> Result
     tracing::info!("run {} completed in {}ms", run_id, duration_ms);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::extract_symbols;
+
+    #[test]
+    fn test_extract_symbols_from_symbols_array() {
+        let params = serde_json::json!({
+            "symbols": ["aapl", " msft ", "AAPL"]
+        });
+        let symbols = extract_symbols(&params);
+        assert_eq!(symbols, vec!["AAPL".to_string(), "MSFT".to_string()]);
+    }
+
+    #[test]
+    fn test_extract_symbols_from_rotation_schema() {
+        let params = serde_json::json!({
+            "risk_on_symbols": ["qqq", "spy"],
+            "defensive_symbols": ["tlt", "ief"],
+            "cash_symbol": "shy"
+        });
+        let symbols = extract_symbols(&params);
+        assert_eq!(
+            symbols,
+            vec![
+                "IEF".to_string(),
+                "QQQ".to_string(),
+                "SHY".to_string(),
+                "SPY".to_string(),
+                "TLT".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_extract_symbols_empty_when_schema_missing() {
+        let params = serde_json::json!({
+            "foo": "bar"
+        });
+        let symbols = extract_symbols(&params);
+        assert!(symbols.is_empty());
+    }
+}

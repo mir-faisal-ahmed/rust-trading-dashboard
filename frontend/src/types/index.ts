@@ -13,7 +13,7 @@ export type StrategyType =
   | "market_making"
   | "trend_following";
 
-export type StrategyStatus = "idle" | "running" | "completed" | "failed" | "queued";
+export type StrategyStatus = "idle" | "running" | "completed" | "failed" | "queued" | "retired";
 
 export type AssetClass = "equity" | "crypto" | "futures" | "options" | "forex";
 

@@ -126,9 +126,6 @@ function CandlestickShape(props: Record<string, unknown>) {
   const { open, high, low, close, isUp } = payload;
   const color = isUp ? "#22c55e" : "#ef4444";
 
-  const yScale = height !== 0 ? Math.abs(y) / Math.abs(height) : 1;
-  const _ = yScale; void _;
-
   const chartAreaTop = y;
   const chartAreaHeight = height;
 
