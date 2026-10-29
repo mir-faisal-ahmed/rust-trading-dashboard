@@ -55,3 +55,11 @@ models/
 *.h5
 *.pkl
 *.joblib
+
+# Large archives and cached data
+*.7z
+python/custom/cache/
+
+# Generated directory dump snapshot
+rust-trading-dashboard.md
+
