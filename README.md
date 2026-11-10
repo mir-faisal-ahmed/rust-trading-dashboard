@@ -2,6 +2,26 @@
 
 Trading strategy benchmarking system. Rust backend (Actix-web), React frontend, PostgreSQL storage, Docker deployment.
 
+## What it does
+
+StratBench runs trading strategies (rule-based, or ML/RL via a Python FinRL sidecar) against historical market data, computes performance metrics (returns, Sharpe, drawdown, etc.), and compares strategies side by side in a live dashboard.
+
+## Who it's for
+
+Quant developers, students, and researchers who want a reproducible way to backtest and benchmark strategies. It is a research tool, not financial advice and not a production trading system.
+
+## Built with
+
+Rust (Actix-web, gRPC), React + TypeScript (Vite, Tailwind), PostgreSQL 16, Python (FinRL sidecar), Docker Compose, nginx.
+
+## Configuration
+
+Copy `.env.example` to `.env` and fill in your own values (for example Alpaca API credentials). `.env` is git-ignored; never commit real keys. The `stratbench` database password in `docker-compose.yml` is a local development default only. Sample data is synthetic (see `scripts/seed_dev_bars.py`).
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md).
+
 ---
 
 ## Architecture
@@ -356,4 +376,5 @@ Use Rust for the execution engine and API server. Use Python for research, model
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE). Code under `python/finrl/` retains its upstream
+license (see `python/finrl/LICENSE`).
